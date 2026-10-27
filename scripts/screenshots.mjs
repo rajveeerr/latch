@@ -30,38 +30,120 @@ try {
   const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
   const id = new URL(worker.url()).host;
   const ext = (p) => `chrome-extension://${id}/${p}`;
+  const shot = async (page, name, opts = {}) => {
+    if (opts.fullPage) {          // size the viewport to the page so nothing is cut off
+      const height = await page.evaluate(() => document.documentElement.scrollHeight);
+      await page.setViewportSize({ width: page.viewportSize().width, height });
+      opts = { ...opts, fullPage: false };
+    }
+    return page.screenshot({ path: out(name), ...opts });
+  };
+  // A device passkey stand-in, attached before the page loads so Touch ID shows as available.
+  const withTouchId = async (page) => {
+    const cdp = await context.newCDPSession(page);
+    await cdp.send('WebAuthn.enable');
+    await cdp.send('WebAuthn.addVirtualAuthenticator', { options: { protocol: 'ctap2', transport: 'internal', hasResidentKey: false, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true } });
+  };
+  const open = async (file, size, scheme = 'light', touch = false) => {
+    const page = await context.newPage();
+    await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' });
+    await page.setViewportSize(size);
+    if (touch) await withTouchId(page);
+    await page.goto(ext(file));
+    return page;
+  };
 
-  const page = await context.newPage();
-  await page.setViewportSize({ width: 760, height: 900 });
-  await page.goto(ext('ui/options.html'));
-  await page.fill('#newPasscode', 'correct horse battery');
-  await page.fill('#repeatPasscode', 'correct horse battery');
-  await page.click('#savePasscode');
-  await page.waitForSelector('#passcodeMsg.ok');
-  await page.reload();
-  await page.screenshot({ path: out('settings.png'), fullPage: true });
+  // First run: nothing is set up yet.
+  const setup = await open('ui/options.html', { width: 1120, height: 900 });
+  await setup.waitForFunction(() => document.getElementById('statusTitle').textContent !== 'Latch');
+  await shot(setup, 'settings-setup.png', { fullPage: true });
+  await setup.fill('#newPasscode', 'correct horse battery');
+  await setup.fill('#repeatPasscode', 'correct horse battery');
+  await setup.click('#savePasscode');
+  await setup.waitForSelector('#recoverySheet:not([hidden])');
+  await setup.setViewportSize({ width: 1120, height: 640 });
+  await shot(setup, 'recovery-code.png');
+  await setup.check('#recoverySaved');
+  await setup.click('#recoveryDone');
+  await setup.close();
 
-  const popup = await context.newPage();
-  await popup.setViewportSize({ width: 310, height: 330 });
-  await popup.goto(ext('ui/popup.html'));
-  await popup.waitForFunction(() => document.getElementById('status').textContent.includes('Protecting'));
-  await popup.locator('body').screenshot({ path: out('popup.png') });
+  // Settings, light and dark.
+  for (const scheme of ['light', 'dark']) {
+    const page = await open('ui/options.html', { width: 1120, height: 900 }, scheme, true);
+    await page.waitForFunction(() => document.getElementById('statusTitle').textContent.includes('Protecting'));
+    if (scheme === 'light') {
+      await page.click('#touchSetup');
+      await page.fill('#authPasscode', 'correct horse battery');
+      await page.click('#save');
+      await page.waitForSelector('#touchRemove:not([hidden])');
+    }
+    await page.waitForTimeout(500);
+    await shot(page, scheme === 'light' ? 'settings-light.png' : 'settings-dark.png', { fullPage: true });
+    if (scheme === 'light') {
+      await page.setViewportSize({ width: 1120, height: 900 });
+      await page.waitForTimeout(3000);                    // let the earlier toast fade
+      await page.fill('#autoLockMinutes', '0');
+      await page.press('#autoLockMinutes', 'Tab');
+      await page.waitForSelector('#authRow:not([hidden])');
+      await page.waitForTimeout(400);
+      await shot(page, 'settings-confirm.png');
+      await page.click('#cancelChange');
+    }
+    await page.close();
+  }
 
-  // Show the lock screen and a covered page without opening the real lock window.
-  const sample = await context.newPage();
-  await sample.setViewportSize({ width: 900, height: 560 });
-  await sample.goto(site);
-  await sample.screenshot({ path: out('page-unlocked.png') });
+  // Popup, light and dark, plus the pause panel.
+  for (const scheme of ['light', 'dark']) {
+    const popup = await open('ui/popup.html', { width: 320, height: 330 }, scheme);
+    await popup.waitForFunction(() => document.getElementById('status').textContent.includes('Protecting'));
+    await shot(popup, scheme === 'light' ? 'popup-light.png' : 'popup.png', { fullPage: true });
+    if (scheme === 'dark') {
+      await popup.click('#pauseToggle');
+      await shot(popup, 'popup-pause.png', { fullPage: true });
+    }
+    await popup.close();
+  }
+
+  // A page, then the same page while locked. (State is set directly so no real lock window opens.)
+  for (const scheme of ['light', 'dark']) {
+    const sample = await context.newPage();
+    await sample.emulateMedia({ colorScheme: scheme });
+    await sample.setViewportSize({ width: 900, height: 560 });
+    await sample.goto(site);
+    if (scheme === 'light') await shot(sample, 'page-unlocked.png');
+    await worker.evaluate(() => chrome.storage.local.set({ state: { locked: true, reason: '5 min of inactivity' } }));
+    await sample.waitForFunction(() => document.documentElement.lastElementChild.getAttribute('popover') === 'manual');
+    await shot(sample, scheme === 'light' ? 'page-covered.png' : 'page-covered-dark.png');
+    await worker.evaluate(() => chrome.storage.local.set({ state: { locked: false } }));
+    await sample.close();
+  }
+
+  // The lock screen, in both appearances, with Touch ID set up, then the recovery path.
   await worker.evaluate(() => chrome.storage.local.set({ state: { locked: true, reason: '5 min of inactivity' } }));
-  await sample.waitForFunction(() => document.documentElement.lastElementChild.getAttribute('popover') === 'manual');
-  await sample.screenshot({ path: out('page-covered.png') });
-
-  const lock = await context.newPage();
-  await lock.setViewportSize({ width: 900, height: 560 });
-  await lock.goto(ext('ui/lock.html'));
-  await lock.waitForFunction(() => document.getElementById('reason').textContent !== '');
-  await lock.screenshot({ path: out('lock.png') });
+  for (const scheme of ['light', 'dark']) {
+    const lock = await open('ui/lock.html', { width: 1440, height: 900 }, scheme, true);
+    await lock.waitForFunction(() => document.getElementById('reason').textContent.includes('inactivity'));
+    await shot(lock, scheme === 'light' ? 'lock-light.png' : 'lock.png');
+    if (scheme === 'light') {
+      await lock.click('#forgot');
+      await shot(lock, 'lock-recover.png');
+    }
+    await lock.close();
+  }
   await worker.evaluate(() => chrome.storage.local.set({ state: { locked: false } }));
+  // "Private windows only" before Latch is allowed in private windows: the overview and the popup say so.
+  const scoped = await context.newPage();
+  await scoped.goto(ext('ui/options.html'));
+  await scoped.evaluate(async (pass) => chrome.runtime.sendMessage({ type: 'saveSettings', settings: { ...(await chrome.runtime.sendMessage({ type: 'getSettings' })).settings, scope: 'private' }, passcode: pass }), 'correct horse battery');
+  await scoped.close();
+  const warn = await open('ui/options.html', { width: 1120, height: 420 });
+  await warn.waitForFunction(() => document.getElementById('statusTitle').textContent.includes('cannot be locked'));
+  await shot(warn, 'private-warning.png', { clip: { x: 230, y: 0, width: 780, height: 320 } });
+  await warn.close();
+  const warnPopup = await open('ui/popup.html', { width: 320, height: 330 });
+  await warnPopup.waitForFunction(() => document.getElementById('status').textContent.includes('can’t be locked'));
+  await shot(warnPopup, 'popup-private-warning.png', { fullPage: true });
+  await warnPopup.close();
   console.log('screenshots written to docs/screenshots');
 } finally {
   await context.close();

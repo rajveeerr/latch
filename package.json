@@ -1,6 +1,6 @@
 {
   "name": "latch",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Lock a Brave/Chrome profile behind a passcode without touching your tabs.",
   "private": true,
   "type": "module",

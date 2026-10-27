@@ -11,7 +11,7 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 
 const root = path.resolve(import.meta.dirname, '../..');
-const PASS = 'hunter22';
+let PASS = 'hunter22';
 
 // A page with looping audio and a half-typed form, to prove locking does not disturb either.
 function wav() {
@@ -66,8 +66,14 @@ try {
   await options.fill('#newPasscode', PASS);
   await options.fill('#repeatPasscode', PASS);
   await options.click('#savePasscode');
-  await options.waitForSelector('#passcodeMsg.ok');
-  ok('passcode can be set from the settings page');
+  await options.waitForSelector('#recoverySheet:not([hidden])');
+  const recoveryCode = await options.textContent('#recoveryValue');
+  assert.match(recoveryCode, /^([A-Z2-9]{4}-){4}[A-Z2-9]{4}$/);
+  assert.equal(await options.isDisabled('#recoveryDone'), true, 'cannot continue before confirming the code is saved');
+  await options.check('#recoverySaved');
+  await options.click('#recoveryDone');
+  await options.waitForSelector('#content:not([hidden])');
+  ok('first run: passcode set, then a recovery code that must be acknowledged');
 
   // A page that is playing sound with an unsaved draft.
   const page = await context.newPage();
@@ -77,15 +83,15 @@ try {
   const tabsBefore = context.pages().map((p) => p.url()).filter((u) => !u.includes('lock.html')).sort();
   ok('sample page is playing audio with a half-typed draft');
 
-  // Loosening a setting needs the passcode; tightening does not.
+  // Settings save as you change them. Loosening one asks for the passcode first.
   await options.bringToFront();
   await options.fill('#autoLockMinutes', '0');
-  await options.click('#save');
-  await options.waitForFunction(() => document.getElementById('saveMsg').textContent.includes('passcode'));
+  await options.press('#autoLockMinutes', 'Tab');          // saves when you leave the box, not on every keystroke
+  await options.waitForSelector('#authRow:not([hidden])');
   await options.fill('#authPasscode', PASS);
   await options.click('#save');
   await options.waitForFunction(() => document.getElementById('saveMsg').textContent === 'Saved.');
-  ok('loosening a setting asks for the passcode');
+  ok('loosening a setting asks for the passcode, then saves by itself');
 
   // Lock.
   await options.evaluate(() => chrome.runtime.sendMessage({ type: 'lock' }));
@@ -100,6 +106,11 @@ try {
   });
   assert.ok(covered, 'page should be covered');
   ok('the page is covered by an opaque full-size layer');
+
+  await page.focus('#draft');                       // even if something focuses the field, typing must not reach it
+  await page.keyboard.type('ZZZ');
+  assert.equal(await page.inputValue('#draft'), 'unsaved draft text', 'typing does not reach a covered page');
+  ok('typing cannot reach the page behind the cover');
 
   const states = await worker.evaluate(async () => (await chrome.windows.getAll({ windowTypes: ['normal'] })).map((w) => w.state));
   // Minimizing is best-effort: automated browsers ignore it, so only report it.
@@ -144,6 +155,74 @@ try {
   const l3 = lockPage();
   await l3.fill('#passcode', PASS); await l3.click('#unlock');
   await until(() => !lockPage(), 'final unlock');
+
+  // ---------- Touch ID (a virtual authenticator stands in for the device) ----------
+  const virtualAuthenticator = async (page) => {
+    const cdp = await context.newCDPSession(page);
+    await cdp.send('WebAuthn.enable');
+    const { authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', { options: { protocol: 'ctap2', transport: 'internal', hasResidentKey: false, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true } });
+    return { cdp, authenticatorId };
+  };
+  const settings2 = await context.newPage();
+  const registered = await virtualAuthenticator(settings2);
+  await settings2.goto(ext('ui/options.html'));
+  await settings2.click('#touchSetup');
+  await settings2.fill('#authPasscode', PASS);
+  await settings2.click('#save');
+  await settings2.waitForSelector('#touchRemove:not([hidden])');
+  ok('Touch ID can be set up with the passcode (virtual authenticator)');
+
+  await options.evaluate(() => chrome.runtime.sendMessage({ type: 'lock' }));
+  const lockT = await until(lockPage, 'lock window for Touch ID');
+  const forLock = await virtualAuthenticator(lockT);
+  const { credentials } = await registered.cdp.send('WebAuthn.getCredentials', { authenticatorId: registered.authenticatorId });
+  for (const credential of credentials) await forLock.cdp.send('WebAuthn.addCredential', { authenticatorId: forLock.authenticatorId, credential });
+  await lockT.reload();
+  await lockT.waitForSelector('#touchId:not([hidden])');
+  await lockT.click('#touchId');
+  await until(() => !lockPage(), 'unlock with Touch ID');
+  ok('the lock screen offers Touch ID and unlocks with it');
+
+  // ---------- forgot the passcode: the recovery code sets a new one ----------
+  await options.evaluate(() => chrome.runtime.sendMessage({ type: 'lock' }));
+  const lockR = await until(lockPage, 'lock window for recovery');
+  await lockR.click('#forgot');
+  await lockR.fill('#recoveryCode', 'AAAA-AAAA-AAAA-AAAA-AAAA');
+  await lockR.fill('#newPass', 'brand new phrase');
+  await lockR.fill('#newPass2', 'brand new phrase');
+  await lockR.click('#recoverBtn');
+  await lockR.waitForFunction(() => document.getElementById('recoverError').textContent.includes('not right'));
+  ok('a wrong recovery code is refused');
+  await lockR.fill('#recoveryCode', recoveryCode.toLowerCase().replaceAll('-', ' '));
+  await lockR.click('#recoverBtn');
+  await lockR.waitForSelector('#viewRecovered:not([hidden])');
+  const newCode = await lockR.textContent('#newCode');
+  assert.notEqual(newCode, recoveryCode, 'a fresh recovery code replaces the old one');
+  assert.equal(await lockR.isDisabled('#finish'), true);
+  await lockR.check('#savedCode');
+  await lockR.click('#finish');
+  await until(() => !lockPage(), 'unlock after recovery');
+  PASS = 'brand new phrase';
+  ok('the recovery code resets the passcode, issues a new code, and unlocks');
+
+  // ---------- activity ----------
+  await settings2.reload();
+  const log = await settings2.locator('#activityList .event .title').allTextContents();
+  assert.ok(log.some((t) => t.startsWith('Wrong')), `a wrong attempt is logged: ${log}`);
+  assert.ok(log.includes('Unlocked'), 'unlocks are logged');
+  assert.ok(log.some((t) => t.includes('recovery code')), 'the recovery reset is logged');
+  ok('the activity log records wrong attempts, unlocks and the recovery reset');
+
+  // ---------- "private windows only" without permission for private windows ----------
+  const scoped = await options.evaluate(async (pass) => chrome.runtime.sendMessage({ type: 'saveSettings', settings: { ...(await chrome.runtime.sendMessage({ type: 'getSettings' })).settings, scope: 'private' }, passcode: pass }), PASS);
+  assert.equal(scoped.ok, true, 'narrowing the scope works with the passcode');
+  const tried = await options.evaluate(() => chrome.runtime.sendMessage({ type: 'lock' }));
+  assert.deepEqual([tried.ok, tried.error], [false, 'incognito-not-allowed'], 'it refuses to pretend to lock');
+  await settings2.reload();
+  assert.match(await settings2.textContent('#statusTitle'), /Private windows cannot be locked yet/);
+  assert.equal(await settings2.isDisabled('#lockNow'), true);
+  await options.evaluate(async (pass) => chrome.runtime.sendMessage({ type: 'saveSettings', settings: { ...(await chrome.runtime.sendMessage({ type: 'getSettings' })).settings, scope: 'profile' }, passcode: pass }), PASS);
+  ok('private-windows-only mode says so when it cannot work, instead of showing "protecting"');
 
   console.log(`\nAll ${step} checks passed.`);
 } catch (err) {
