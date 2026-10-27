@@ -54,7 +54,7 @@ try {
   };
   const PASS = 'correct horse battery';
 
-  // First run: Kerby walks you through it.
+  // First run: Aegis walks you through it.
   const ob = await open('ui/options.html', { width: 1000, height: 760 });
   await ob.waitForSelector('#onboarding:not([hidden])');
   await ob.waitForTimeout(500);
@@ -62,7 +62,7 @@ try {
   await ob.click('#obStart');
   await ob.fill('#newPasscode', PASS);
   await ob.fill('#repeatPasscode', PASS);
-  await ob.waitForSelector('.kerby[data-state="typing"]');
+  await ob.waitForSelector('.aegis[data-state="typing"]');
   await shot(ob, 'onboarding-passcode.png');
   await ob.click('#savePasscode');
   await ob.waitForSelector('#recoverySheet:not([hidden])');
@@ -123,7 +123,7 @@ try {
     await sample.close();
   }
 
-  // The lock screen: both appearances, Kerby reacting, and the recovery path.
+  // The lock screen: both appearances, Aegis reacting, and the recovery path.
   await worker.evaluate(() => chrome.storage.local.set({ state: { locked: true, reason: '5 min of inactivity' } }));
   for (const scheme of ['light', 'dark']) {
     const lock = await open('ui/lock.html', { width: 1440, height: 900 }, scheme, true);
@@ -134,7 +134,7 @@ try {
       await lock.fill('#passcode', 'not it');
       await shot(lock, 'lock-typing.png');
       await lock.click('#unlock');
-      await lock.waitForSelector('.kerby[data-state="growl"]');
+      await lock.waitForSelector('.aegis[data-state="growl"]');
       await shot(lock, 'lock-growl.png');
       await lock.click('#forgot');
       await shot(lock, 'lock-recover.png');

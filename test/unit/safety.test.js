@@ -22,6 +22,7 @@ test('the only tabs Latch opens are its own settings page and the browser pages 
     /^chrome\.tabs\.create\(\{ url: `chrome:\/\/extensions\/\?id=\$\{chrome\.runtime\.id\}` \}\)$/,   // allow in private windows
     /^chrome\.tabs\.create\(\{ url: 'chrome:\/\/extensions\/shortcuts' \}\)$/,                       // change the shortcut
     /^chrome\.tabs\.create\(\{ url: chrome\.runtime\.getURL\('ui\/options\.html' \+ hash\) \}\)$/,       // open Latch settings
+    /^chrome\.tabs\.create\(\{ url: chrome\.runtime\.getURL\('ui\/lock\.html#preview'\) \}\)$/,                // preview the lock screen
   ];
   for (const [file, code] of all) {
     for (const match of code.matchAll(/chrome\.tabs\.create\(\{[^}]*\}\)/g)) {

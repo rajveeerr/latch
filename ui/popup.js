@@ -1,7 +1,7 @@
-import { mountKerby } from './kerby.js';
+import { mountAegis } from './aegis.js';
 
 const $ = (id) => document.getElementById(id);
-const kerby = mountKerby($('mascot'), { state: 'guard' });
+const aegis = mountAegis($('mascot'), { state: 'guard' });
 const send = (message) => chrome.runtime.sendMessage(message);
 let minutes = 15;
 let lastStatus = null;
@@ -34,7 +34,7 @@ async function render() {
 
   const dot = $('dot');
   dot.className = 'dot';
-  kerby.set(!status.hasPasscode ? 'guard' : (!status.enabled || status.paused) ? 'sleep' : 'guard');
+  aegis.set(!status.hasPasscode ? 'guard' : (!status.enabled || status.paused) ? 'sleep' : 'guard');
   $('notice').hidden = !(status.failedSinceUnlock > 0);
   if (status.failedSinceUnlock > 0) {
     $('noticeText').textContent = status.failedSinceUnlock === 1

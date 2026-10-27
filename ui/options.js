@@ -1,4 +1,4 @@
-import { mountKerby } from './kerby.js';
+import { mountAegis } from './aegis.js';
 import { mountScene } from './scene.js';
 import { b64u } from '../src/lib/webauthn.js';
 
@@ -9,8 +9,8 @@ const NUMBERS = ['autoLockMinutes', 'blurLockMinutes'];
 
 let saved = null;            // settings exactly as the background has them
 let status = null;
-let kerby = null;            // the overview mascot
-let obKerby = null;          // the onboarding mascot
+let aegis = null;            // the overview mascot
+let obAegis = null;          // the onboarding mascot
 let obActive = false;        // first run: the stepped flow is showing
 let pauseMinutes = 15;
 let touchAvailable = false;
@@ -138,7 +138,7 @@ function renderOverview() {
   $('turnOff').textContent = saved.enabled ? 'Turn off' : 'Turn on';
   $('turnOff').hidden = !status.hasPasscode;
   if (!status.hasPasscode || !saved.enabled || status.paused) $('pauseChoice').hidden = true;
-  kerby.set(!status.hasPasscode || !saved.enabled || status.paused ? 'sleep' : 'guard');
+  aegis.set(!status.hasPasscode || !saved.enabled || status.paused ? 'sleep' : 'guard');
 }
 
 // ---------- first-run checklist ----------
@@ -223,8 +223,8 @@ $('lockNow').addEventListener('click', async () => {
     toast(result.error === 'incognito-not-allowed' ? 'Allow Latch in private windows first.' : 'Could not lock.', 'error');
     return;
   }
-  kerby.set('happy');
-  setTimeout(() => kerby.set('guard'), 1400);
+  aegis.set('happy');
+  setTimeout(() => aegis.set('guard'), 1400);
   if (result.noPrivateWindows) toast('Locked. No private windows are open right now; new ones will be covered.');
 });
 $('allowPrivate').addEventListener('click', () => send({ type: 'openIncognitoSettings' }));
@@ -465,6 +465,16 @@ $('clearActivity').addEventListener('click', () => {
   });
 });
 
+// ---------- lock screen style ----------
+function renderLockStyle() {
+  const current = localStorage.getItem('lockStyle') === 'dial' ? 'dial' : 'card';
+  for (const b of document.querySelectorAll('#lockStyleRow .seg button')) b.setAttribute('aria-pressed', String(b.dataset.style === current));
+}
+for (const b of document.querySelectorAll('#lockStyleRow .seg button')) {
+  b.addEventListener('click', () => { localStorage.setItem('lockStyle', b.dataset.style); renderLockStyle(); toast('Lock screen changed. Try Preview.'); });
+}
+$('lockPreview').addEventListener('click', () => chrome.tabs.create({ url: chrome.runtime.getURL('ui/lock.html#preview') }));
+
 // ---------- help ----------
 $('shortcutsOpen').addEventListener('click', async () => {
   try { await chrome.tabs.create({ url: 'chrome://extensions/shortcuts' }); }
@@ -485,7 +495,7 @@ for (const a of links) { const section = document.getElementById(a.dataset.nav);
 // ---------- first-run onboarding ----------
 const OB_PANES = ['welcome', 'passcode', 'recovery', 'private', 'touch', 'mac'];
 const OB_IDS = { welcome: 'obWelcome', passcode: 'obPasscode', recovery: 'obRecovery', private: 'obPrivate', touch: 'obTouch', mac: 'obMac' };
-const OB_KERBY = { welcome: 'guard', passcode: 'guard', recovery: 'happy', private: 'guard', touch: 'guard', mac: 'happy' };
+const OB_MASCOT = { welcome: 'guard', passcode: 'guard', recovery: 'happy', private: 'guard', touch: 'guard', mac: 'happy' };
 let obCurrent = 'welcome';
 
 function obGo(name) {
@@ -494,7 +504,7 @@ function obGo(name) {
   for (const key of OB_PANES) $(OB_IDS[key]).hidden = key !== name;
   const index = OB_PANES.indexOf(name);
   $('obDots').innerHTML = OB_PANES.filter((key) => key !== 'touch' || touchAvailable).map((key) => `<li class="${key === name ? 'on' : OB_PANES.indexOf(key) < index ? 'done' : ''}"></li>`).join('');
-  obKerby.set(OB_KERBY[name]);
+  obAegis.set(OB_MASCOT[name]);
   const total = OB_PANES.filter((key) => key !== 'touch' || touchAvailable).length;
   $('obStepText').textContent = `Step ${Math.min(index + 1, total)} of ${total}`;
   $('obSkip').hidden = !status.hasPasscode || name === 'welcome' || name === 'passcode' || name === 'recovery';
@@ -529,13 +539,13 @@ async function startOnboarding() {
 async function finishOnboarding() {
   await chrome.storage.local.set({ onboarded: true });
   obActive = false;
-  obKerby.destroy();                       // he is hidden now, so stop him blinking and tracking
+  obAegis.destroy();                       // he is hidden now, so stop him blinking and tracking
   document.body.removeAttribute('data-ob');
   $('onboarding').hidden = true;
   $('shell').hidden = false;
   await load();
-  kerby.set('happy');
-  setTimeout(() => kerby.set('guard'), 1600);
+  aegis.set('happy');
+  setTimeout(() => aegis.set('guard'), 1600);
   toast('You are protected. Press Lock now to try it.');
 }
 
@@ -546,10 +556,10 @@ $('obAllow').addEventListener('click', () => send({ type: 'openIncognitoSettings
 $('obTouchSetup').addEventListener('click', () => $('touchSetup').click());
 $('obFinish').addEventListener('click', finishOnboarding);
 $('obSkip').addEventListener('click', finishOnboarding);
-// Kerby shuts his eyes while a passcode is typed
+// Aegis raises his shield while a passcode is typed
 for (const id of ['newPasscode', 'repeatPasscode']) {
-  $(id).addEventListener('input', () => { if (obActive) obKerby.set($(id).value ? 'typing' : 'guard'); });
-  $(id).addEventListener('blur', () => { if (obActive && obCurrent === 'passcode') obKerby.set('guard'); });
+  $(id).addEventListener('input', () => { if (obActive) obAegis.set($(id).value ? 'typing' : 'guard'); });
+  $(id).addEventListener('blur', () => { if (obActive && obCurrent === 'passcode') obAegis.set('guard'); });
 }
 
 // ---------- load ----------
@@ -573,10 +583,11 @@ async function load() {
 }
 
 (async () => {
-  kerby = mountKerby($('heroArt'), { state: 'guard' });
+  aegis = mountAegis($('heroArt'), { state: 'guard' });
   mountScene($('obScene'));
-  obKerby = mountKerby($('obKerby'), { state: 'guard' });
+  obAegis = mountAegis($('obMascot'), { state: 'guard' });
   try { touchAvailable = Boolean(window.PublicKeyCredential) && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable(); } catch { touchAvailable = false; }
+  renderLockStyle();
   await load();
   // Someone who set Latch up before onboarding existed has already finished it.
   const { onboarded, recoveryAck } = await chrome.storage.local.get(['onboarded', 'recoveryAck']);

@@ -152,7 +152,7 @@ body[data-setup] #overview .actions { display: none; }
 .obHero { position: relative; height: 236px; overflow: hidden; background: #131f4d; }
 .obScene { position: absolute; inset: 0; }
 .obScene svg { position: absolute; left: 0; top: -14px; width: 100%; height: auto; min-height: 270px; }
-.obKerby { position: absolute; left: 50%; bottom: 2px; width: 168px; translate: -50% 0; z-index: 2; }
+.obMascot { position: absolute; left: 50%; bottom: 0; width: 176px; translate: -50% 0; z-index: 2; }
 .obBody { padding: 26px 30px 26px; display: grid; gap: 14px; }
 .obDots { list-style: none; display: flex; gap: 6px; margin: 0; padding: 0; justify-content: center; }
 .obDots li { width: 7px; height: 7px; border-radius: 50%; background: var(--line-strong); transition: background-color .2s, width .25s var(--ease); }

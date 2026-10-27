@@ -1,6 +1,8 @@
 import { b64u } from '../src/lib/webauthn.js';
-import { mountKerby } from './kerby.js';
-import { mountScene, BRANCH } from './scene.js';
+import { mountAegis } from './aegis.js';
+import { mountScene } from './scene.js';
+import { mountPoster } from './poster.js';
+import { mountDial } from './lockdial.js';
 
 const $ = (id) => document.getElementById(id);
 const send = (message) => chrome.runtime.sendMessage(message);
@@ -8,22 +10,46 @@ const form = $('form'), input = $('passcode'), button = $('unlock');
 let countdown;
 let calmTimer;
 
-mountScene($('sceneSlot'));
-$('branchSlot').innerHTML = BRANCH;
-const kerby = mountKerby($('kerbySlot'), { state: 'guard', track: false });   // one pointer handler below drives both the tilt and his eyes
-const calm = (after = 0) => { clearTimeout(calmTimer); calmTimer = setTimeout(() => kerby.set(document.activeElement === input && input.value ? 'typing' : 'guard'), after); };
+const preview = location.hash === '#preview';       // opened from Settings: nothing real happens here
+mountPoster($('poster'));
 
-// the card tilts toward the pointer, and the painted layers slide at different depths
-const tilt = $('tilt');
+// Two lock-screen styles share everything but the picture on the left. "pet" is whatever reacts to what you do:
+// Aegis on his trading card, or the dial and lamp of the combination lock.
+const style = document.documentElement.dataset.lockStyle;
+let pet;
+if (style === 'dial') {
+  const dial = mountDial($('dialVisual'));
+  $('coreDialSlot').append($('unlockCore'));                    // the passcode field lives inside the lock
+  let current = 'guard';
+  pet = {
+    set(next) {
+      if (next === current) return;
+      current = next;
+      if (next === 'growl') dial.wrong();
+      else if (next === 'happy') dial.open();
+      else if (next === 'guard') dial.calm();
+    },
+    turn: (length) => dial.turn(length),
+    lookAt() {},
+  };
+} else {
+  mountScene($('sceneSlot'));
+  const aegis = mountAegis($('mascotSlot'), { state: 'guard', track: false });   // one pointer handler below drives the tilt and his eyes
+  pet = { set: (next) => aegis.set(next), turn() {}, lookAt: (x, y) => aegis.lookAt(x, y) };
+}
+const calm = (after = 0) => { clearTimeout(calmTimer); calmTimer = setTimeout(() => pet.set(document.activeElement === input && input.value ? 'typing' : 'guard'), after); };
+
+// the visual tilts toward the pointer, and layers slide at different depths
+const visual = document.querySelector('.visual');
 if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
   let raf = 0;
   window.addEventListener('pointermove', (event) => {
     if (raf) return;
     raf = requestAnimationFrame(() => {
       raf = 0;
-      tilt.style.setProperty('--mx', (event.clientX / innerWidth * 2 - 1).toFixed(3));
-      tilt.style.setProperty('--my', (event.clientY / innerHeight * 2 - 1).toFixed(3));
-      kerby.lookAt(event.clientX, event.clientY);
+      visual.style.setProperty('--mx', (event.clientX / innerWidth * 2 - 1).toFixed(3));
+      visual.style.setProperty('--my', (event.clientY / innerHeight * 2 - 1).toFixed(3));
+      pet.lookAt(event.clientX, event.clientY);
     });
   }, { passive: true });
 }
@@ -53,13 +79,13 @@ tickClock();
 function show(view) {
   for (const id of ['viewUnlock', 'viewRecover', 'viewRecovered']) $(id).hidden = id !== view;
   const focus = { viewUnlock: input, viewRecover: $('recoveryCode'), viewRecovered: $('savedCode') }[view];
-  kerby.set(view === 'viewRecovered' ? 'happy' : 'guard');
+  pet.set(view === 'viewRecovered' ? 'happy' : 'guard');
   focus.focus();
 }
 $('forgot').addEventListener('click', () => show('viewRecover'));
 for (const id of ['newPass', 'newPass2']) {
-  $(id).addEventListener('input', () => kerby.set($(id).value ? 'typing' : 'guard'));
-  $(id).addEventListener('blur', () => kerby.set('guard'));
+  $(id).addEventListener('input', () => pet.set($(id).value ? 'typing' : 'guard'));
+  $(id).addEventListener('blur', () => pet.set('guard'));
 }
 $('backToUnlock').addEventListener('click', () => show('viewUnlock'));
 
@@ -70,14 +96,14 @@ for (const reveal of document.querySelectorAll('.reveal')) {
     const showing = field.type === 'password';
     field.type = showing ? 'text' : 'password';
     reveal.setAttribute('aria-label', showing ? 'Hide passcode' : 'Show passcode');
-    if (field === input) kerby.set(showing ? 'peek' : (input.value ? 'typing' : 'guard'));
+    if (field === input) pet.set(showing ? 'peek' : (input.value ? 'typing' : 'guard'));
     reveal.querySelector('use').setAttribute('href', showing ? 'icons.svg#eye-off' : 'icons.svg#eye');
     field.focus();
   });
 }
-input.addEventListener('input', () => kerby.set(input.type === 'text' ? 'peek' : (input.value ? 'typing' : 'guard')));
-input.addEventListener('focus', () => { if (input.value) kerby.set(input.type === 'text' ? 'peek' : 'typing'); });
-input.addEventListener('blur', () => kerby.set('guard'));
+input.addEventListener('input', () => { pet.set(input.type === 'text' ? 'peek' : (input.value ? 'typing' : 'guard')); pet.turn(input.value.length); });
+input.addEventListener('focus', () => { if (input.value) pet.set(input.type === 'text' ? 'peek' : 'typing'); });
+input.addEventListener('blur', () => pet.set('guard'));
 const caps = (event) => { $('caps').hidden = !event.getModifierState?.('CapsLock'); };
 input.addEventListener('keydown', caps);
 input.addEventListener('keyup', caps);
@@ -85,7 +111,7 @@ window.addEventListener('focus', () => { if (!$('viewUnlock').hidden && !input.d
 
 // ---------- feedback ----------
 function fail(message) {
-  kerby.set('growl'); calm(1500);
+  pet.set('growl'); calm(1500);
   $('error').textContent = '';
   requestAnimationFrame(() => { $('error').textContent = message; });     // re-announced each time
   input.setAttribute('aria-invalid', 'true');
@@ -118,7 +144,7 @@ function showWait(ms) {
 }
 
 function done(method) {
-  kerby.set('happy');
+  pet.set('happy');
   document.querySelector('.panel').classList.add('done');
   document.querySelector('.stage').classList.add('done');
   $('title').textContent = 'Unlocked';
@@ -129,6 +155,12 @@ function done(method) {
 }
 
 async function init() {
+  if (preview) {
+    $('title').textContent = 'Lock screen preview';
+    $('reason').textContent = 'Nothing is locked. Type anything and press Unlock, or type “wrong”.';
+    document.querySelector('.alts').hidden = true;
+    return;
+  }
   const status = await send({ type: 'getStatus' });
   if (status.reason) $('reason').textContent = status.reason + '.';
   if (status.scope === 'private') $('footText').textContent = 'Only your private windows are locked. Everything else stays open.';
@@ -147,6 +179,14 @@ async function init() {
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
   if (button.disabled) return;
+  if (preview) {                                        // a safe demo of both reactions
+    if (!input.value) return fail('Type anything to see it react, or “wrong” to see the other reaction.');
+    const wrong = input.value.toLowerCase() === 'wrong';
+    input.value = ''; pet.turn(0);
+    if (wrong) return fail('Wrong passcode. Try again.');
+    done();
+    return void setTimeout(() => location.reload(), 2600);
+  }
   if (!input.value) return fail('Type your passcode.');
   button.disabled = true;
   const result = await send({ type: 'unlock', passcode: input.value });

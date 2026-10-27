@@ -6,27 +6,27 @@
   <title>Latch settings</title>
   <link rel="preload" href="fonts/geist-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="common.css">
-  <link rel="stylesheet" href="kerby.css">
+  <link rel="stylesheet" href="aegis.css">
   <link rel="stylesheet" href="options.css">
 </head>
 <body>
-  <!-- first run: one calm step at a time, with Kerby -->
+  <!-- first run: one calm step at a time, with Aegis -->
   <section class="ob" id="onboarding" hidden aria-labelledby="obTitle">
     <div class="obCard card">
-      <div class="obHero"><div class="obScene" id="obScene"></div><div class="obKerby" id="obKerby"></div></div>
+      <div class="obHero"><div class="obScene" id="obScene"></div><div class="obMascot" id="obMascot"></div></div>
       <div class="obBody">
         <ol class="obDots" id="obDots" aria-hidden="true"></ol>
         <p class="sr" id="obStepText" role="status"></p>
 
         <div class="pane" id="obWelcome">
-          <h1 id="obTitle">Hi, I'm Kerby.</h1>
-          <p class="muted">I'm a three-headed guard pup. While you are away I keep your browser locked, and I never close, reload or change a single tab. Setup takes about a minute.</p>
+          <h1 id="obTitle">Hi, I'm Aegis.</h1>
+          <p class="muted">I'm a little marble hoplite. While you are away I keep your browser locked behind my shield, and I never close, reload or change a single tab. Setup takes about a minute.</p>
           <button class="btn primary wide" id="obStart" type="button">Get started</button>
         </div>
 
         <div class="pane" id="obPasscode" hidden>
           <h2>Choose a passcode</h2>
-          <p class="muted">I will ask for it whenever the browser is locked. I close my eyes while you type.</p>
+          <p class="muted">I will ask for it whenever the browser is locked. My shield goes up while you type.</p>
           <div id="obFormSlot"></div>
         </div>
 
@@ -170,6 +170,16 @@
               <label class="row"><span class="rowIcon"><svg class="i"><use href="icons.svg#window"/></svg></span><span class="grow"><span class="title">Minimize windows</span><span class="muted small block">Brought back as they were when you unlock. Needs the browser to allow minimizing.</span></span><input class="switch" role="switch" type="checkbox" id="minimizeWindows"></label>
               <label class="row"><span class="rowIcon"><svg class="i"><use href="icons.svg#pause"/></svg></span><span class="grow"><span class="title">Pause video and audio</span><span class="muted small block">Stops anything playing on the covered pages.</span></span><input class="switch" role="switch" type="checkbox" id="pauseMedia"></label>
               <label class="row"><span class="rowIcon"><svg class="i"><use href="icons.svg#speaker-off"/></svg></span><span class="grow"><span class="title">Mute tabs that make sound</span><span class="muted small block">Unmuted when you unlock.</span></span><input class="switch" role="switch" type="checkbox" id="muteTabs"></label>
+            </div>
+            <div class="card list">
+              <div class="row stack" id="lockStyleRow">
+                <div class="rowHead"><span class="rowIcon"><svg class="i"><use href="icons.svg#lock"/></svg></span>
+                  <div><span class="title">Lock screen</span><p class="muted small">How the lock screen looks when you come back to it.</p></div></div>
+                <div class="rowCtl">
+                  <div class="seg" role="group" aria-label="Lock screen style"><button type="button" data-style="card" aria-pressed="true">Aegis on a card</button><button type="button" data-style="dial" aria-pressed="false">Combination lock</button></div>
+                  <button class="btn" id="lockPreview" type="button">Preview</button>
+                </div>
+              </div>
             </div>
             <p class="reassure small muted"><svg class="i"><use href="icons.svg#shield-check"/></svg> Latch never closes, reloads or edits your tabs, tab groups or windows.</p>
           </section>
