@@ -49,7 +49,7 @@ I was not alone. Brave's own tracker lists [password protection for tabs and pro
 | **Passcode lock** that covers every page, pauses media and mutes tabs | **Touch ID** (beta) through WebAuthn, with your passcode always as backup |
 | **Private windows only** mode, like Safari, so the rest of the browser stays open | **Auto-lock** after inactivity, in the background, on sleep or at startup |
 | **Recovery code**, so a forgotten passcode never means removing the extension | **Activity log** of locks, unlocks and wrong guesses, on your computer only |
-| **Aegis**, a three-headed guard pup who closes his eyes while you type and growls at a wrong guess | **A lock screen that feels physical**: a brass combination lock whose dial turns as you type, whose lamp flashes red on a wrong guess, and whose shackle lifts when it opens | **Light and dark** that follow your system, in a calm native-feeling interface |
+| **Aegis**, a three-headed guard pup who closes his eyes while you type and growls at a wrong guess | **Make it yours**: pick the lock screen (a combination lock or a trading card) and the mascot (Aegis, Kerby, or none) | **A lock screen that feels physical**: a brass combination lock whose dial turns as you type, whose lamp flashes red on a wrong guess, and whose shackle lifts when it opens | **Light and dark** that follow your system, in a calm native-feeling interface |
 
 <p align="center">
   <img src="docs/screenshots/onboarding-welcome.png" alt="Onboarding with Aegis" width="300">
@@ -113,7 +113,7 @@ Latch is a **privacy lock for a browser you leave on a desk**, not a security bo
 ```sh
 npm install                  # only for the tests and the art scripts
 npm test                     # 41 unit tests: passcode, recovery, WebAuthn, settings, safety rules
-BRAVE=1 npm run test:e2e     # 18 end-to-end checks in real Brave with a throwaway profile
+BRAVE=1 npm run test:e2e     # 19 end-to-end checks in real Brave with a throwaway profile
 npm run zip                  # dist/latch-<version>.zip
 node scripts/make-icons-sprite.mjs   # icons from Lucide
 ```

@@ -169,3 +169,8 @@ body[data-setup] #overview .actions { display: none; }
 /* the drawn grid is quiet behind dense settings, and full strength on the onboarding stage */
 body::before { opacity: .4; }
 body[data-ob]::before { opacity: 1; }
+
+/* no mascot chosen: the overview gives its whole width to the words */
+.hero[data-nomascot] { grid-template-columns: 1fr; }
+.obHero [data-mascot="none"] { display: none; }
+.heroArt[data-mascot="kerby"] { margin-bottom: -10px; }

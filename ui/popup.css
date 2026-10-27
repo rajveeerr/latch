@@ -2,6 +2,9 @@ body { width: 320px; padding: 16px 14px 10px; display: grid; gap: 12px; align-co
 header { display: flex; gap: 11px; align-items: center; }
 header .mascot { width: 52px; height: 52px; flex: none; overflow: hidden; border-radius: 14px; background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--line); }
 header .mascot svg { width: 150px; margin: -34px 0 0 -49px; }
+header .mascot[data-mascot="kerby"] svg { width: 104px; margin: -4px 0 0 -26px; }
+header .mascot[data-mascot="none"] { background: none; box-shadow: none; display: grid; place-items: center; }
+header .mascot[data-mascot="none"] img { border-radius: 8px; }
 header strong { font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
 .status { display: flex; align-items: center; gap: 8px; margin-top: 1px; font-size: 13px; color: var(--text-2); }
 .detail { margin: -4px 0 0 0; }

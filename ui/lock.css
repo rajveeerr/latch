@@ -97,3 +97,31 @@ label { display: grid; gap: 6px; font-size: 13px; font-weight: 500; }
 @media (prefers-reduced-motion: reduce) { .device.wrong .lamp { animation: none; } }
 @media (max-height: 800px) { .stage { gap: 16px; } .clock time { font-size: 30px; } .clock p { display: none; } .device { width: min(440px, 94vw); } .front { height: 70px; } .inlay.grille { min-height: 90px; } }
 @media (max-width: 480px) { .controls { gap: 10px; padding: 8px 10px; } .knobwell { width: 60px; height: 60px; } .knob { width: 50px; height: 50px; } .lampwell { width: 32px; height: 32px; } .lamp { width: 22px; height: 22px; } .lcdDots { font-size: 22px; } .front { height: 70px; } .inlay.grille { min-height: 86px; } }
+
+/* ---------- the other layout: a trading card ---------- */
+html[data-lock-layout="card"] #dialVisual, html[data-lock-layout="device"] #cardVisual { display: none; }
+.cardwrap { --mx: 0; --my: 0; perspective: 1000px; }
+.tilt { transform: rotateX(calc(var(--my) * -5deg)) rotateY(calc(var(--mx) * 7deg)); transition: transform .25s var(--ease); transform-style: preserve-3d; }
+.card { position: relative; width: min(330px, 84vw); padding: 12px 12px 10px; border-radius: 24px; color: #eef1ff; isolation: isolate; text-align: left;
+  background: linear-gradient(165deg, #243d8c 0%, #131f4d 62%, #0e1738 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .16), inset 0 1px 0 rgba(255, 255, 255, .28), 0 2px 6px rgba(0, 0, 0, .25), 0 28px 50px rgba(0, 0, 0, .3); }
+.card::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: url(art/grain.png) 96px; opacity: .45; pointer-events: none; z-index: 3; }
+.plate2 { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 2px 4px 0; }
+.nm { font: 650 23px/1.15 var(--display); letter-spacing: -.035em; }
+.role { font-size: 11.5px; color: rgba(238, 241, 255, .68); }
+.art { position: relative; margin-top: 10px; aspect-ratio: 306 / 270; }
+.scene-slot { position: absolute; inset: 0; border-radius: 15px; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .2); }
+.scene-slot svg { position: absolute; inset: -14px; width: calc(100% + 28px); height: calc(100% + 28px); display: block; }
+.scene .layer-back { transform: translate(calc(var(--mx) * -7px), calc(var(--my) * -4px)); transition: transform .25s var(--ease); }
+.scene .layer-mid { transform: translate(calc(var(--mx) * -3px), calc(var(--my) * -2px)); transition: transform .25s var(--ease); }
+.scene .layer-front { transform: translate(calc(var(--mx) * 3px), calc(var(--my) * 2px)); transition: transform .25s var(--ease); }
+.mascot-slot { position: absolute; left: 50%; bottom: -24px; width: 72%; translate: -50% 0; z-index: 2; transform: translate3d(calc(var(--mx) * 9px), calc(var(--my) * 5px), 40px); transition: transform .25s var(--ease); }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); margin: 32px 0 0; padding: 10px 4px 2px; border-top: 1px solid rgba(255, 255, 255, .14); }
+.stats:empty { display: none; }
+.stats div { display: grid; gap: 1px; text-align: center; }
+.stats dd { margin: 0; font: 600 20px/1.1 var(--display); letter-spacing: -.03em; }
+.stats dt { font-size: 11px; color: rgba(238, 241, 255, .66); }
+.sheen { position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 4; background: radial-gradient(circle at calc(50% + var(--mx) * 40%) calc(30% + var(--my) * 30%), rgba(255, 255, 255, .2), transparent 46%); }
+html[data-lock-layout="card"] .mascot-slot:empty { display: none; }
+@media (prefers-reduced-motion: no-preference) { .tilt { animation: bob 7s ease-in-out infinite; } @keyframes bob { 50% { translate: 0 -4px; } } .stage.done .cardwrap { animation: lift .5s var(--ease) both; } }
+@media (max-height: 800px) { html[data-lock-layout="card"] .card { width: 270px; } html[data-lock-layout="card"] .stats { display: none; } html[data-lock-layout="card"] .art { margin-bottom: 14px; } }

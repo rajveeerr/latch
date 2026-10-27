@@ -1,0 +1,54 @@
+/* Kerby's colours and reactions. Marble fur, one blue collar, a sage laurel. */
+.kerby { --fur: #f3efe7; --fur-light: #fbf9f4; --fur-shade: #ddd6c7; --fur-deep: #c2b9a6; --ink: #1b2136; --tongue: #f08a8a; --blush: #f2a7a0; --collar: #2b4fdb; --leaf: #86a273; --outline: #cfc6b3;
+  display: block; width: 100%; height: auto; overflow: visible; }
+@media (prefers-color-scheme: dark) { .kerby { --fur: #efe9de; --fur-light: #fbf8f1; --fur-shade: #d3ccbc; --collar: #4a6df0; --leaf: #9ab586; --outline: #b9b09c; } }
+
+.kerby .fur, .kerby .fur-shade, .kerby .ear, .kerby .paw, .kerby .tail { stroke: var(--outline); stroke-width: 1.6; stroke-linejoin: round; }
+.kerby .fur { fill: var(--fur); } .kerby .fur-light { fill: var(--fur-light); } .kerby .fur-shade { fill: var(--fur-shade); }
+.kerby .ear { fill: var(--fur-shade); } .kerby .paw { fill: var(--fur-light); }
+.kerby .tail { fill: var(--fur-shade); transform-origin: 270px 338px; }
+.kerby .ground { fill: #14171f; opacity: .10; }
+.kerby .line { fill: none; stroke: var(--ink); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; } .kerby .line.soft { stroke: var(--fur-deep); stroke-width: 2; }
+.kerby .nose { fill: var(--ink); }
+.kerby .blush { fill: var(--blush); opacity: .32; }
+.kerby .tongue { fill: var(--tongue); opacity: 0; transform-origin: 0 28px; transform: scaleY(0); transition: opacity .15s, transform .25s cubic-bezier(.16,1,.3,1); }
+.kerby .eye-white { fill: #fff; opacity: 0; }
+.kerby .ink { fill: var(--ink); } .kerby .glint { fill: #fff; }
+.kerby .pupil { transition: transform .12s ease-out; }
+.kerby .lid { fill: var(--fur); transform-box: fill-box; transform-origin: 50% 0; transform: scaleY(0); transition: transform .14s ease-out; }
+.kerby .happy-eye { fill: none; stroke: var(--ink); stroke-width: 4; stroke-linecap: round; opacity: 0; }
+.kerby .brow { fill: none; stroke: var(--fur-deep); stroke-width: 4; stroke-linecap: round; transform-box: fill-box; transform-origin: 50% 100%; transition: transform .2s cubic-bezier(.16,1,.3,1), stroke .2s; }
+.kerby .collar { fill: var(--collar); } .kerby .tag-disc { fill: #fff; stroke: var(--collar); stroke-width: 3; }
+.kerby .tag-lock rect { fill: var(--collar); } .kerby .tag-lock path { fill: none; stroke: var(--collar); stroke-width: 2.4; stroke-linecap: round; }
+.kerby .leaf { fill: var(--leaf); }
+.kerby .zzz { opacity: 0; fill: none; stroke: var(--fur-deep); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; transition: opacity .3s; }
+.kerby .head, .kerby > g { transition: transform .3s cubic-bezier(.16,1,.3,1); }
+
+/* blink, and the poses */
+.kerby.blink .lid { transform: scaleY(1); }
+.kerby[data-state="typing"] .lid, .kerby[data-state="sleep"] .lid { transform: scaleY(1); }
+.kerby[data-state="peek"] .lid { transform: scaleY(1); }
+.kerby[data-state="peek"] .head[data-head="c"] .eye-b .lid { transform: scaleY(.15); }
+.kerby[data-state="growl"] .brow { stroke: var(--ink); }
+.kerby[data-state="growl"] .brow-a { transform: translate(-26px, -6px) rotate(16deg); }
+.kerby[data-state="growl"] .brow-b { transform: translate(26px, -6px) rotate(-16deg); }
+.kerby[data-state="growl"] .blush { opacity: .6; }
+.kerby[data-state="growl"] .mouth .line { d: path("M0 18v8M0 26q-9-8-19-1M0 26q9-8 19-1"); }
+.kerby[data-state="happy"] .eye .ink, .kerby[data-state="happy"] .eye .glint { opacity: 0; }
+.kerby[data-state="happy"] .happy-eye { opacity: 1; }
+.kerby[data-state="happy"] .tongue { opacity: 1; transform: scaleY(1); }
+.kerby[data-state="sleep"] .zzz { opacity: 1; }
+
+/* motion, only for people who have not asked for less */
+@media (prefers-reduced-motion: no-preference) {
+  .kerby .tail { animation: sway 3.4s ease-in-out infinite; }
+  .kerby[data-state="happy"] .tail { animation: wag .22s ease-in-out infinite; }
+  .kerby[data-state="happy"] { animation: hop .5s cubic-bezier(.16,1,.3,1) 1; }
+  .kerby.shake { animation: grr .42s ease-in-out 1; }
+  .kerby[data-state="sleep"] .zzz { animation: float 3s ease-in-out infinite; }
+  @keyframes sway { 50% { transform: rotate(5deg); } }
+  @keyframes wag { 50% { transform: rotate(16deg); } }
+  @keyframes hop { 40% { transform: translateY(-14px); } }
+  @keyframes grr { 20% { transform: translateX(-6px); } 45% { transform: translateX(6px); } 70% { transform: translateX(-3px); } }
+  @keyframes float { 50% { transform: translateY(-6px); } }
+}

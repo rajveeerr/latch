@@ -1,7 +1,8 @@
-import { mountAegis } from './aegis.js';
+import { mountMascot } from './mascot.js';
 
 const $ = (id) => document.getElementById(id);
-const aegis = mountAegis($('mascot'), { state: 'guard' });
+let aegis = mountMascot($('mascot'), { state: 'guard' });
+if (aegis.id === 'none') { $('mascot').hidden = false; $('mascot').innerHTML = '<img src="../icons/icon-48.png" alt="" width="32" height="32">'; $('mascot').dataset.mascot = 'none'; }
 const send = (message) => chrome.runtime.sendMessage(message);
 let minutes = 15;
 let lastStatus = null;

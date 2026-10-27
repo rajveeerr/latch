@@ -1,5 +1,7 @@
 import { b64u } from '../src/lib/webauthn.js';
 import { mountDial } from './lockdial.js';
+import { mountMascot, MASCOTS } from './mascot.js';
+import { mountScene } from './scene.js';
 
 const $ = (id) => document.getElementById(id);
 const send = (message) => chrome.runtime.sendMessage(message);
@@ -8,25 +10,43 @@ let countdown;
 let calmTimer;
 const preview = location.hash === '#preview';       // opened from Settings: nothing real happens here
 
-// The lock reacts to what you do: the dial turns a notch for every character, the lamp glows,
-// a wrong guess snaps it back and flashes red, and the shackle lifts when it opens.
-const dial = mountDial($('dialVisual'));
-let current = 'guard';
-const pet = {
-  set(next) {
-    if (next === current) return;
-    current = next;
-    if (next === 'growl') dial.wrong();
-    else if (next === 'happy') dial.open();
-    else if (next === 'guard') dial.calm();
-  },
-  turn: (length) => dial.turn(length),
-  lookAt() {},
-};
+// Two layouts share everything except the picture: a physical combination lock, or a trading card with the chosen
+// mascot on it. Either way "pet" is whatever reacts to what you do (typing, a wrong guess, a right one).
+const layout = document.documentElement.dataset.lockLayout;
+let pet;
+if (layout === 'card') {
+  const mascot = mountMascot($('mascotSlot'), { state: 'guard', track: false });   // one pointer handler below drives tilt and eyes
+  const meta = MASCOTS[mascot.id];
+  mountScene($('sceneSlot'));
+  $('cardName').textContent = meta.name;
+  $('cardRole').textContent = meta.role;
+  for (const [value, label] of meta.stats) {
+    const cell = document.createElement('div');
+    const dd = document.createElement('dd'), dt = document.createElement('dt');
+    dd.textContent = value; dt.textContent = label;
+    cell.append(dd, dt);
+    $('cardStats').append(cell);
+  }
+  pet = { set: (next) => mascot.set(next), turn() {}, lookAt: (x, y) => mascot.lookAt(x, y) };
+} else {
+  const dial = mountDial($('dialVisual'));
+  let current = 'guard';
+  pet = {
+    set(next) {
+      if (next === current) return;
+      current = next;
+      if (next === 'growl') dial.wrong();
+      else if (next === 'happy') dial.open();
+      else if (next === 'guard') dial.calm();
+    },
+    turn: (length) => dial.turn(length),
+    lookAt() {},
+  };
+}
 const calm = (after = 0) => { clearTimeout(calmTimer); calmTimer = setTimeout(() => pet.set(document.activeElement === input && input.value ? 'typing' : 'guard'), after); };
 
 // the lock tilts a touch toward the pointer
-const visual = $('dialVisual');
+const visual = layout === 'card' ? $('cardVisual') : $('dialVisual');
 if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
   let raf = 0;
   window.addEventListener('pointermove', (event) => {
@@ -35,6 +55,7 @@ if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
       raf = 0;
       visual.style.setProperty('--mx', (event.clientX / innerWidth * 2 - 1).toFixed(3));
       visual.style.setProperty('--my', (event.clientY / innerHeight * 2 - 1).toFixed(3));
+      pet.lookAt(event.clientX, event.clientY);
     });
   }, { passive: true });
 }

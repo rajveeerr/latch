@@ -44,9 +44,9 @@ try {
     await cdp.send('WebAuthn.enable');
     await cdp.send('WebAuthn.addVirtualAuthenticator', { options: { protocol: 'ctap2', transport: 'internal', hasResidentKey: false, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true } });
   };
-  const open = async (file, size, scheme = 'light', touch = false, lockStyle = null) => {
+  const open = async (file, size, scheme = 'light', touch = false, prefs = null) => {
     const page = await context.newPage();
-    if (lockStyle) await page.addInitScript((value) => localStorage.setItem('lockStyle', value), lockStyle);
+    if (prefs) await page.addInitScript((p) => { for (const [k, v] of Object.entries(p)) localStorage.setItem(k, v); }, prefs);
     await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' });
     await page.setViewportSize(size);
     if (touch) await withTouchId(page);
@@ -145,6 +145,23 @@ try {
     await lock.close();
   }
   await worker.evaluate(() => chrome.storage.local.set({ state: { locked: false } }));
+
+  // The other layout and the other mascot.
+  await worker.evaluate(() => chrome.storage.local.set({ state: { locked: true, reason: '5 min of inactivity' } }));
+  for (const [mascot, scheme] of [['aegis', 'light'], ['kerby', 'dark']]) {
+    const lock = await open('ui/lock.html', { width: 1440, height: 900 }, scheme, true, { lockLayout: 'card', mascot });
+    await lock.waitForFunction(() => document.getElementById('reason').textContent.includes('inactivity'));
+    await lock.waitForTimeout(500);
+    await shot(lock, `lock-card-${mascot}-${scheme}.png`);
+    await lock.close();
+  }
+  await worker.evaluate(() => chrome.storage.local.set({ state: { locked: false } }));
+  const appearance = await open('ui/options.html', { width: 1120, height: 900 });
+  await appearance.waitForFunction(() => document.getElementById('statusTitle').textContent.includes('Protecting'));
+  await appearance.locator('#appearance').scrollIntoViewIfNeeded();
+  await appearance.waitForTimeout(300);
+  await appearance.locator('#appearance').screenshot({ path: out('settings-appearance.png') });
+  await appearance.close();
 
   // "Private windows only" before Latch is allowed in private windows: the overview and the popup say so.
   const scoped = await context.newPage();

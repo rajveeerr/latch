@@ -7,6 +7,7 @@
   <link rel="preload" href="fonts/geist-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="common.css">
   <link rel="stylesheet" href="aegis.css">
+  <link rel="stylesheet" href="kerby.css">
   <link rel="stylesheet" href="options.css">
 </head>
 <body>
@@ -63,6 +64,7 @@
         <a href="#protect" data-nav="protect"><svg class="i"><use href="icons.svg#shield-check"/></svg> What to protect</a>
         <a href="#when" data-nav="when"><svg class="i"><use href="icons.svg#clock"/></svg> When to lock</a>
         <a href="#while" data-nav="while"><svg class="i"><use href="icons.svg#layers"/></svg> While locked</a>
+        <a href="#appearance" data-nav="appearance"><svg class="i"><use href="icons.svg#sparkles"/></svg> Appearance</a>
         <a href="#security" data-nav="security"><svg class="i"><use href="icons.svg#key"/></svg> Passcode and recovery</a>
         <a href="#activity" data-nav="activity"><svg class="i"><use href="icons.svg#activity"/></svg> Activity</a>
         <a href="#help" data-nav="help"><svg class="i"><use href="icons.svg#info"/></svg> Help</a>
@@ -172,6 +174,35 @@
               <label class="row"><span class="rowIcon"><svg class="i"><use href="icons.svg#speaker-off"/></svg></span><span class="grow"><span class="title">Mute tabs that make sound</span><span class="muted small block">Unmuted when you unlock.</span></span><input class="switch" role="switch" type="checkbox" id="muteTabs"></label>
             </div>
             <p class="reassure small muted"><svg class="i"><use href="icons.svg#shield-check"/></svg> Latch never closes, reloads or edits your tabs, tab groups or windows.</p>
+          </section>
+
+          <section id="appearance" class="group" aria-labelledby="appearanceTitle">
+            <h2 id="appearanceTitle">Appearance</h2>
+            <div class="card list">
+              <div class="row stack">
+                <div class="rowHead"><span class="rowIcon"><svg class="i"><use href="icons.svg#lock"/></svg></span>
+                  <div><span class="title" id="layoutLabel">Lock screen</span><p class="muted small">How the lock screen looks when you come back to it.</p></div></div>
+                <div class="rowCtl">
+                  <div class="seg" id="layoutSeg" role="radiogroup" aria-labelledby="layoutLabel">
+                    <button type="button" role="radio" data-layout="device" aria-checked="true">Combination lock</button>
+                    <button type="button" role="radio" data-layout="card" aria-checked="false">Trading card</button>
+                  </div>
+                  <button class="btn" id="lockPreview" type="button">Preview</button>
+                </div>
+              </div>
+              <div class="row stack">
+                <div class="rowHead"><span class="rowIcon"><svg class="i"><use href="icons.svg#paw"/></svg></span>
+                  <div><span class="title" id="mascotLabel">Mascot</span><p class="muted small">Shown while you set up, in the toolbar, on the overview and on the trading card.</p></div></div>
+                <div class="rowCtl">
+                  <div class="seg" id="mascotSeg" role="radiogroup" aria-labelledby="mascotLabel">
+                    <button type="button" role="radio" data-mascot="aegis" aria-checked="true">Aegis</button>
+                    <button type="button" role="radio" data-mascot="kerby" aria-checked="false">Kerby</button>
+                    <button type="button" role="radio" data-mascot="none" aria-checked="false">None</button>
+                  </div>
+                  <span class="muted small" id="mascotNote">A little marble hoplite.</span>
+                </div>
+              </div>
+            </div>
           </section>
 
           <section id="security" class="group" aria-labelledby="securityTitle">

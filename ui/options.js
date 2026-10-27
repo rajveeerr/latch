@@ -1,4 +1,4 @@
-import { mountAegis } from './aegis.js';
+import { mountMascot, getMascot, setMascot, getLayout, setLayout } from './mascot.js';
 import { mountScene } from './scene.js';
 import { b64u } from '../src/lib/webauthn.js';
 
@@ -465,6 +465,29 @@ $('clearActivity').addEventListener('click', () => {
   });
 });
 
+// ---------- appearance: lock screen layout and mascot ----------
+const MASCOT_NOTES = { aegis: 'A little marble hoplite.', kerby: 'A three-headed guard pup.', none: 'No mascot anywhere. Just the lock.' };
+function renderAppearance() {
+  const layout = getLayout(), mascot = getMascot();
+  for (const b of document.querySelectorAll('#layoutSeg button')) b.setAttribute('aria-checked', String(b.dataset.layout === layout));
+  for (const b of document.querySelectorAll('#mascotSeg button')) b.setAttribute('aria-checked', String(b.dataset.mascot === mascot));
+  $('mascotNote').textContent = MASCOT_NOTES[mascot];
+}
+for (const b of document.querySelectorAll('#layoutSeg button')) {
+  b.addEventListener('click', () => { setLayout(b.dataset.layout); renderAppearance(); toast('Lock screen changed. Press Preview to see it.'); });
+}
+for (const b of document.querySelectorAll('#mascotSeg button')) {
+  b.addEventListener('click', () => {
+    setMascot(b.dataset.mascot);
+    renderAppearance();
+    aegis.destroy();                                           // swap the overview mascot right away
+    aegis = mountMascot($('heroArt'), { state: 'guard' });
+    $('overview').toggleAttribute('data-nomascot', aegis.id === 'none');
+    toast(b.dataset.mascot === 'none' ? 'Mascot turned off.' : `${b.textContent} is on guard.`);
+  });
+}
+$('lockPreview').addEventListener('click', () => chrome.tabs.create({ url: chrome.runtime.getURL('ui/lock.html#preview') }));
+
 // ---------- help ----------
 $('shortcutsOpen').addEventListener('click', async () => {
   try { await chrome.tabs.create({ url: 'chrome://extensions/shortcuts' }); }
@@ -573,10 +596,12 @@ async function load() {
 }
 
 (async () => {
-  aegis = mountAegis($('heroArt'), { state: 'guard' });
+  aegis = mountMascot($('heroArt'), { state: 'guard' });
+  $('overview').toggleAttribute('data-nomascot', aegis.id === 'none');
   mountScene($('obScene'));
-  obAegis = mountAegis($('obMascot'), { state: 'guard' });
+  obAegis = mountMascot($('obMascot'), { state: 'guard' });
   try { touchAvailable = Boolean(window.PublicKeyCredential) && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable(); } catch { touchAvailable = false; }
+  renderAppearance();
   await load();
   // Someone who set Latch up before onboarding existed has already finished it.
   const { onboarded, recoveryAck } = await chrome.storage.local.get(['onboarded', 'recoveryAck']);

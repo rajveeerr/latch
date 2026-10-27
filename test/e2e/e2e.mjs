@@ -249,6 +249,37 @@ try {
   await previewPage.close();
   ok('the lock-screen preview is a safe demo that never locks or logs anything');
 
+  // ---------- appearance: the lock screen layout and the mascot are real choices ----------
+  await settings2.reload();
+  await settings2.click('#layoutSeg button[data-layout="card"]');
+  await settings2.click('#mascotSeg button[data-mascot="kerby"]');
+  await settings2.waitForSelector('#heroArt svg.kerby');
+  assert.equal(await settings2.getAttribute('#mascotSeg button[data-mascot="kerby"]', 'aria-checked'), 'true');
+  await options.evaluate(() => chrome.runtime.sendMessage({ type: 'lock' }));
+  const lockC = await until(lockPage, 'lock window in the card layout');
+  await lockC.waitForSelector('#cardVisual', { state: 'visible' });
+  assert.equal(await lockC.isVisible('#dialVisual'), false, 'only the chosen layout shows');
+  assert.equal(await lockC.textContent('#cardName'), 'Kerby');
+  await lockC.waitForSelector('#mascotSlot svg.kerby');
+  await lockC.fill('#passcode', 'abc');
+  assert.equal(await lockC.getAttribute('svg.kerby', 'data-state'), 'typing', 'the mascot reacts while you type');
+  await lockC.fill('#passcode', PASS);
+  await lockC.click('#unlock');
+  await until(() => !lockPage(), 'unlock from the card layout');
+  await settings2.click('#mascotSeg button[data-mascot="none"]');
+  await settings2.waitForFunction(() => document.getElementById('overview').hasAttribute('data-nomascot'));
+  await options.evaluate(() => chrome.runtime.sendMessage({ type: 'lock' }));
+  const lockN = await until(lockPage, 'lock window with no mascot');
+  await lockN.waitForSelector('#cardVisual', { state: 'visible' });
+  assert.equal(await lockN.textContent('#cardName'), 'Latch', 'with no mascot the card is just Latch');
+  assert.equal(await lockN.locator('#mascotSlot svg').count(), 0, 'and no mascot is drawn');
+  await lockN.fill('#passcode', PASS);
+  await lockN.click('#unlock');
+  await until(() => !lockPage(), 'unlock with no mascot');
+  await settings2.click('#layoutSeg button[data-layout="device"]');
+  await settings2.click('#mascotSeg button[data-mascot="aegis"]');
+  ok('lock-screen layout and mascot can be chosen (Kerby, Aegis or none), and the lock screen follows the choice');
+
   console.log(`\nAll ${step} checks passed.`);
 } catch (err) {
   console.error('\nFAILED:', err);
