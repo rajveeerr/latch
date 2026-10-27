@@ -10,10 +10,23 @@ const sources = (dir) => readdirSync(path.join(root, dir), { recursive: true }).
 const all = [...sources('src'), ...sources('ui')];
 
 test('no code closes, reloads, discards or navigates tabs', () => {
-  const banned = /chrome\.tabs\.(remove|discard|reload|goBack|goForward|group|ungroup|move|create)\b|chrome\.bookmarks|chrome\.tabGroups|chrome\.sessions|chrome\.history|chrome\.browsingData|location\.(href|assign|replace)\s*=|window\.close\(\)/;
+  const banned = /chrome\.tabs\.(remove|discard|reload|goBack|goForward|group|ungroup|move)\b|chrome\.bookmarks|chrome\.tabGroups|chrome\.sessions|chrome\.history|chrome\.browsingData|location\.(href|assign|replace)\s*=|window\.close\(\)/;
   for (const [file, code] of all) {
     if (file.endsWith('popup.js')) continue;   // the popup may close itself
     assert.ok(!banned.test(code), `${file} uses a forbidden call`);
+  }
+});
+
+test('the only tabs Latch opens are its own settings page and the browser pages for extension options', () => {
+  const allowed = [
+    /^chrome\.tabs\.create\(\{ url: `chrome:\/\/extensions\/\?id=\$\{chrome\.runtime\.id\}` \}\)$/,   // allow in private windows
+    /^chrome\.tabs\.create\(\{ url: 'chrome:\/\/extensions\/shortcuts' \}\)$/,                       // change the shortcut
+    /^chrome\.tabs\.create\(\{ url: chrome\.runtime\.getURL\('ui\/options\.html' \+ hash\) \}\)$/,       // open Latch settings
+  ];
+  for (const [file, code] of all) {
+    for (const match of code.matchAll(/chrome\.tabs\.create\(\{[^}]*\}\)/g)) {
+      assert.ok(allowed.some((re) => re.test(match[0])), `${file} opens an unexpected tab: ${match[0]}`);
+    }
   }
 });
 
@@ -31,5 +44,5 @@ test('only the permissions Latch needs are requested', () => {
 });
 
 test('nothing talks to the network', () => {
-  for (const [file, code] of all) assert.ok(!/\bfetch\(|XMLHttpRequest|WebSocket|sendBeacon|https?:\/\//.test(code), `${file} may use the network`);
+  for (const [file, code] of all) assert.ok(!/\bfetch\(|XMLHttpRequest|WebSocket|sendBeacon/.test(code) && !/https?:\/\/(?!www\.w3\.org\/2000\/svg)/.test(code), `${file} may use the network`);
 });
