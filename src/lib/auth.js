@@ -1,5 +1,5 @@
-// Passcode storage and checking. Pure logic: the caller passes in a `store`
-// ({ get(key), set(key, value) }) so this runs in the extension and in tests.
+// Passcode and recovery-code storage and checking. Pure logic: the caller passes in a
+// `store` ({ get(key), set(key, value) }) so this runs in the extension and in tests.
 
 const ITERATIONS = 310000;     // PBKDF2-SHA256
 export const MIN_LENGTH = 4;
@@ -16,8 +16,8 @@ function fromB64(str) {
   return Uint8Array.from(atob(str), (c) => c.charCodeAt(0));
 }
 
-async function derive(pass, salt, iterations) {
-  const key = await crypto.subtle.importKey('raw', enc.encode(pass), 'PBKDF2', false, ['deriveBits']);
+async function derive(secret, salt, iterations) {
+  const key = await crypto.subtle.importKey('raw', enc.encode(secret), 'PBKDF2', false, ['deriveBits']);
   return new Uint8Array(await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations, hash: 'SHA-256' }, key, 256));
 }
 
@@ -42,38 +42,100 @@ function serial(fn) {
   return run;
 }
 
+async function makeRecord(secret) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const hash = await derive(secret, salt, ITERATIONS);
+  return { salt: toB64(salt), hash: toB64(hash), iterations: ITERATIONS, fails: 0, lockoutUntil: 0 };
+}
+
+// Shared by passcode and recovery code: check `secret` against the record stored under `key`.
+function checkRecord(store, key, secret, now) {
+  return serial(async () => {
+    const record = await store.get(key);
+    if (!record || !record.hash) return { ok: false, error: 'no-passcode' };
+    if (record.lockoutUntil > now) return { ok: false, error: 'locked-out', retryAfterMs: record.lockoutUntil - now };
+    const attempt = await derive(String(secret ?? ''), fromB64(record.salt), record.iterations);
+    if (sameBytes(attempt, fromB64(record.hash))) {
+      if (record.fails || record.lockoutUntil) await store.set(key, { ...record, fails: 0, lockoutUntil: 0 });
+      return { ok: true };
+    }
+    const fails = (record.fails || 0) + 1;
+    const retryAfterMs = delayAfterFailures(fails);
+    await store.set(key, { ...record, fails, lockoutUntil: retryAfterMs ? now + retryAfterMs : 0 });
+    return { ok: false, error: 'wrong', retryAfterMs };
+  });
+}
+
+// ---------- passcode ----------
+
 export async function hasPasscode(store) {
   const auth = await store.get('auth');
   return Boolean(auth && auth.hash);
 }
 
 export function verifyPasscode(store, pass, now = Date.now()) {
-  return serial(async () => {
-    const auth = await store.get('auth');
-    if (!auth || !auth.hash) return { ok: false, error: 'no-passcode' };
-    if (auth.lockoutUntil > now) return { ok: false, error: 'locked-out', retryAfterMs: auth.lockoutUntil - now };
-    const attempt = await derive(String(pass ?? ''), fromB64(auth.salt), auth.iterations);
-    if (sameBytes(attempt, fromB64(auth.hash))) {
-      if (auth.fails || auth.lockoutUntil) await store.set('auth', { ...auth, fails: 0, lockoutUntil: 0 });
-      return { ok: true };
-    }
-    const fails = (auth.fails || 0) + 1;
-    const retryAfterMs = delayAfterFailures(fails);
-    await store.set('auth', { ...auth, fails, lockoutUntil: retryAfterMs ? now + retryAfterMs : 0 });
-    return { ok: false, error: 'wrong', retryAfterMs };
-  });
+  return checkRecord(store, 'auth', pass, now);
 }
 
-// First passcode needs no `current`; changing one requires the old one.
-export async function setPasscode(store, pass, current) {
+function validNewPasscode(pass) {
   if (typeof pass !== 'string' || pass.length < MIN_LENGTH) return { ok: false, error: 'too-short' };
   if (pass.length > MAX_LENGTH) return { ok: false, error: 'too-long' };
-  if (await hasPasscode(store)) {
+  return { ok: true };
+}
+
+// The first passcode needs no `current` and comes with a recovery code, returned once.
+// Changing a passcode requires the old one and keeps the recovery code.
+export async function setPasscode(store, pass, current) {
+  const valid = validNewPasscode(pass);
+  if (!valid.ok) return valid;
+  const existing = await hasPasscode(store);
+  if (existing) {
     const check = await verifyPasscode(store, current);
     if (!check.ok) return check;
   }
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const hash = await derive(pass, salt, ITERATIONS);
-  await store.set('auth', { salt: toB64(salt), hash: toB64(hash), iterations: ITERATIONS, fails: 0, lockoutUntil: 0 });
-  return { ok: true };
+  await store.set('auth', await makeRecord(pass));
+  const result = { ok: true };
+  if (!(await store.get('recovery'))) result.recoveryCode = await createRecoveryCode(store);
+  return result;
+}
+
+// ---------- recovery code ----------
+
+// 20 characters from a 32-letter alphabet without look-alikes (no 0/O, 1/I): 100 bits.
+const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+export function formatRecoveryCode(raw) {
+  return raw.match(/.{1,4}/g).join('-');
+}
+
+export function normalizeRecoveryCode(input) {
+  return String(input ?? '').toUpperCase().split('').filter((c) => ALPHABET.includes(c)).join('');
+}
+
+export async function createRecoveryCode(store) {
+  const bytes = crypto.getRandomValues(new Uint8Array(20));
+  const raw = Array.from(bytes, (b) => ALPHABET[b & 31]).join('');
+  await store.set('recovery', await makeRecord(raw));
+  return formatRecoveryCode(raw);
+}
+
+export function verifyRecoveryCode(store, code, now = Date.now()) {
+  return checkRecord(store, 'recovery', normalizeRecoveryCode(code), now);
+}
+
+// Forgot the passcode: the recovery code proves ownership, sets a new passcode and is replaced by a fresh one.
+export async function resetWithRecovery(store, code, newPass, now = Date.now()) {
+  const valid = validNewPasscode(newPass);
+  if (!valid.ok) return valid;
+  const check = await verifyRecoveryCode(store, code, now);
+  if (!check.ok) return check;
+  await store.set('auth', await makeRecord(newPass));
+  return { ok: true, recoveryCode: await createRecoveryCode(store) };
+}
+
+// A new recovery code for someone who still knows the passcode (the old code stops working).
+export async function regenerateRecovery(store, current, now = Date.now()) {
+  const check = await verifyPasscode(store, current, now);
+  if (!check.ok) return check;
+  return { ok: true, recoveryCode: await createRecoveryCode(store) };
 }

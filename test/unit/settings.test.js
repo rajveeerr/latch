@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULTS, normalizeSettings, isWeakening } from '../../src/lib/settings.js';
+import { DEFAULTS, normalizeSettings, isWeakening, covers } from '../../src/lib/settings.js';
 
 test('missing or garbage input falls back to defaults', () => {
   assert.deepEqual(normalizeSettings(undefined), DEFAULTS);
@@ -36,4 +36,20 @@ test('longer timeouts, turning things off, and turning Latch off are weakening',
 
 test('saving unchanged settings is not weakening', () => {
   assert.equal(isWeakening(DEFAULTS, { ...DEFAULTS }), false);
+});
+
+test('the scope is validated, and narrowing protection to private windows counts as weakening', () => {
+  assert.equal(normalizeSettings({ scope: 'private' }).scope, 'private');
+  assert.equal(normalizeSettings({ scope: 'everything' }).scope, 'profile');
+  assert.equal(isWeakening(DEFAULTS, { ...DEFAULTS, scope: 'private' }), true);
+  assert.equal(isWeakening({ ...DEFAULTS, scope: 'private' }, DEFAULTS), false);
+});
+
+test('"everything" covers every window; "private only" covers only private ones', () => {
+  const everything = { ...DEFAULTS, scope: 'profile' }, privateOnly = { ...DEFAULTS, scope: 'private' };
+  assert.equal(covers(everything, { incognito: false }), true);
+  assert.equal(covers(everything, { incognito: true }), true);
+  assert.equal(covers(privateOnly, { incognito: false }), false);
+  assert.equal(covers(privateOnly, { incognito: true }), true);
+  assert.equal(covers(privateOnly, {}), false, 'unknown is treated as not private');
 });

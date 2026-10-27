@@ -10,7 +10,7 @@ const memoryStore = () => {
 test('a passcode is stored as a salted hash, never as text', async () => {
   const store = memoryStore();
   assert.equal(await hasPasscode(store), false);
-  assert.deepEqual(await setPasscode(store, 'correct horse'), { ok: true });
+  assert.equal((await setPasscode(store, 'correct horse')).ok, true);
   assert.equal(await hasPasscode(store), true);
   assert.ok(!JSON.stringify(store.data).includes('correct horse'));
 });
