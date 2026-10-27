@@ -97,6 +97,8 @@ try {
   ok('loosening a setting asks for the passcode, then saves by itself');
 
   // Lock.
+  await page.bringToFront();
+  const windowBefore = await worker.evaluate(async () => (await chrome.windows.getLastFocused()).id);
   await options.evaluate(() => chrome.runtime.sendMessage({ type: 'lock' }));
   const lock = await until(lockPage, 'lock window to open');
   await until(() => page.evaluate(() => document.getElementById('a').paused), 'audio to pause');
@@ -127,18 +129,22 @@ try {
   // Wrong passcode, then right.
   const lock2 = lockPage();
   await lock2.fill('#passcode', 'nope');
-  assert.equal(await lock2.getAttribute('svg.aegis', 'data-state'), 'typing', 'Aegis raises his shield while you type');
+  assert.equal(await lock2.evaluate(() => getComputedStyle(document.getElementById('dialVisual')).getPropertyValue('--turn').trim()), '100.8deg', 'the dial turns a notch per character');
   await lock2.click('#unlock');
   await lock2.waitForFunction(() => document.getElementById('error').textContent.includes('Wrong'));
-  await lock2.waitForSelector('svg.aegis[data-state="growl"]');
+  await lock2.waitForSelector('#dialVisual.wrong');
   assert.ok(lockPage());
-  ok('a wrong passcode is refused, and Aegis growls');
+  ok('a wrong passcode is refused, and the lock rejects it');
 
   await lock2.fill('#passcode', PASS);
   await lock2.click('#unlock');
   await until(() => !lockPage(), 'lock window to close after unlocking');
   await until(() => page.evaluate(() => document.documentElement.lastElementChild.getAttribute('popover') !== 'manual'), 'cover to go away');
-  ok('the right passcode unlocks and removes the cover');
+  const windowAfter = await worker.evaluate(async () => (await chrome.windows.getLastFocused()).id);
+  assert.equal(windowAfter, windowBefore, 'focus returns to the window you were using');
+  const leftover = await worker.evaluate(async () => (await chrome.windows.getAll({ windowTypes: ['popup'] })).length);
+  assert.equal(leftover, 0, 'the lock window is gone');
+  ok('the right passcode unlocks, removes the cover, closes the lock window and returns focus to your window');
 
   // Nothing was lost.
   const tabsAfter = context.pages().map((p) => p.url()).filter((u) => !u.includes('lock.html')).sort();
@@ -201,7 +207,6 @@ try {
   await lockR.fill('#recoveryCode', recoveryCode.toLowerCase().replaceAll('-', ' '));
   await lockR.click('#recoverBtn');
   await lockR.waitForSelector('#viewRecovered:not([hidden])');
-  assert.equal(await lockR.getAttribute('svg.aegis', 'data-state'), 'happy', 'Aegis is happy about the reset');
   const newCode = await lockR.textContent('#newCode');
   assert.notEqual(newCode, recoveryCode, 'a fresh recovery code replaces the old one');
   assert.equal(await lockR.isDisabled('#finish'), true);
@@ -230,25 +235,6 @@ try {
   await options.evaluate(async (pass) => chrome.runtime.sendMessage({ type: 'saveSettings', settings: { ...(await chrome.runtime.sendMessage({ type: 'getSettings' })).settings, scope: 'profile' }, passcode: pass }), PASS);
   ok('private-windows-only mode says so when it cannot work, instead of showing "protecting"');
 
-  // ---------- the combination lock style ----------
-  await settings2.evaluate(() => localStorage.setItem('lockStyle', 'dial'));
-  await options.evaluate(() => chrome.runtime.sendMessage({ type: 'lock' }));
-  const lockD = await until(lockPage, 'lock window in the dial style');
-  await lockD.waitForSelector('#dialVisual', { state: 'visible' });
-  assert.equal(await lockD.isVisible('#cardVisual'), false, 'only one style shows');
-  assert.equal(await lockD.evaluate(() => document.getElementById('coreDialSlot').contains(document.getElementById('passcode'))), true, 'the passcode field sits inside the lock');
-  await lockD.fill('#passcode', 'abc');
-  const turned = await lockD.evaluate(() => getComputedStyle(document.getElementById('dialVisual')).getPropertyValue('--turn').trim());
-  assert.equal(turned, '75.6deg', 'the dial turns one notch for every character');
-  await lockD.fill('#passcode', 'nope');
-  await lockD.click('#unlock');
-  await lockD.waitForSelector('#dialVisual.wrong');
-  assert.equal(await lockD.evaluate(() => getComputedStyle(document.getElementById('dialVisual')).getPropertyValue('--turn').trim()), '0deg', 'the dial snaps back after a wrong guess');
-  await lockD.fill('#passcode', PASS);
-  await lockD.click('#unlock');
-  await until(() => !lockPage(), 'unlock from the combination lock');
-  ok('the combination lock turns per character, snaps back on a wrong guess, and unlocks');
-
   // ---------- previewing a style from Settings never touches the real lock ----------
   const previewPage = await context.newPage();
   await previewPage.goto(ext('ui/lock.html#preview'));
@@ -261,7 +247,6 @@ try {
   const afterPreview = await worker.evaluate(async () => (await chrome.storage.local.get('state')).state.locked);
   assert.equal(afterPreview, false, 'previewing does not lock anything');
   await previewPage.close();
-  await settings2.evaluate(() => localStorage.removeItem('lockStyle'));
   ok('the lock-screen preview is a safe demo that never locks or logs anything');
 
   console.log(`\nAll ${step} checks passed.`);

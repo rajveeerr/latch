@@ -124,26 +124,25 @@ try {
     await sample.close();
   }
 
-  // The lock screen: both styles, both appearances, reacting to what you do.
+  // The lock screen: both appearances, and the lock reacting to what you do.
   await worker.evaluate(() => chrome.storage.local.set({ state: { locked: true, reason: '5 min of inactivity' } }));
-  for (const style of ['card', 'dial']) {
-    for (const scheme of ['light', 'dark']) {
-      const lock = await open('ui/lock.html', { width: 1440, height: 900 }, scheme, true, style);
-      await lock.waitForFunction(() => document.getElementById('reason').textContent.includes('inactivity'));
-      await lock.waitForTimeout(400);
-      await shot(lock, `lock-${style}-${scheme}.png`);
-      if (scheme === 'light') {
-        await lock.fill('#passcode', 'not it');
-        await lock.waitForTimeout(500);
-        await shot(lock, `lock-${style}-typing.png`);
-        await lock.click('#unlock');
-        await lock.waitForSelector(style === 'card' ? '.aegis[data-state="growl"]' : '#dialVisual.wrong');
-        await lock.waitForTimeout(200);
-        await shot(lock, `lock-${style}-wrong.png`);
-        if (style === 'card') { await lock.click('#forgot'); await shot(lock, 'lock-recover.png'); }
-      }
-      await lock.close();
+  for (const scheme of ['light', 'dark']) {
+    const lock = await open('ui/lock.html', { width: 1440, height: 900 }, scheme, true);
+    await lock.waitForFunction(() => document.getElementById('reason').textContent.includes('inactivity'));
+    await lock.waitForTimeout(400);
+    await shot(lock, scheme === 'light' ? 'lock-light.png' : 'lock-dark.png');
+    if (scheme === 'light') {
+      await lock.fill('#passcode', 'not it');
+      await lock.waitForTimeout(500);
+      await shot(lock, 'lock-typing.png');
+      await lock.click('#unlock');
+      await lock.waitForSelector('#dialVisual.wrong');
+      await lock.waitForTimeout(200);
+      await shot(lock, 'lock-wrong.png');
+      await lock.click('#forgot');
+      await shot(lock, 'lock-recover.png');
     }
+    await lock.close();
   }
   await worker.evaluate(() => chrome.storage.local.set({ state: { locked: false } }));
 

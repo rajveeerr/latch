@@ -4,100 +4,73 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Locked – Latch</title>
-  <script src="lock-style.js"></script>
   <link rel="preload" href="fonts/geist-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="fonts/bricolage-grotesque-latin-opsz-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="common.css">
-  <link rel="stylesheet" href="aegis.css">
   <link rel="stylesheet" href="lock.css">
 </head>
 <body>
-  <div class="poster" id="poster" aria-hidden="true"></div>
   <main class="stage">
-    <div class="brand"><img src="../icons/icon-32.png" alt="" width="22" height="22"> <span>Latch</span></div>
+    <div class="clock" aria-hidden="true"><time id="clock"></time><p id="date"></p></div>
 
-    <section class="duo">
-      <!-- left: Aegis on his trading card, or the combination lock -->
-      <div class="visual">
-        <div class="cardwrap" id="cardVisual" aria-hidden="true">
-          <div class="tilt" id="tilt">
-            <div class="card">
-              <div class="plate"><span class="nm">Aegis</span><span class="role">Guardian of the gate</span></div>
-              <div class="art"><div class="scene-slot" id="sceneSlot"></div><div class="mascot-slot" id="mascotSlot"></div></div>
-              <dl class="stats"><div><dd>1</dd><dt>Shield</dt></div><div><dd>0</dd><dt>Tabs lost</dt></div><div><dd>&infin;</dd><dt>Patience</dt></div></dl>
-              <i class="sheen"></i>
-            </div>
+    <div class="lockbox" id="dialVisual" aria-hidden="true">
+      <div class="shackle"></div>
+      <div class="lockbody">
+        <i class="screw tl"></i><i class="screw tr"></i><i class="screw bl"></i><i class="screw br"></i>
+        <div class="dialwrap">
+          <div class="bezel">
+            <div class="dial" id="dial"></div>
+            <div class="cap"><img src="../icons/icon-48.png" alt="" width="34" height="34"></div>
+            <i class="pointer"></i>
           </div>
+          <i class="lamp" id="lamp"></i>
         </div>
+      </div>
+    </div>
 
-        <div class="lockbox" id="dialVisual">
-          <div class="shackle" aria-hidden="true"></div>
-          <div class="lockbody">
-            <i class="screw tl"></i><i class="screw tr"></i><i class="screw bl"></i><i class="screw br"></i>
-            <div class="dialwrap" aria-hidden="true">
-              <div class="bezel">
-                <div class="dial" id="dial"></div>
-                <div class="cap"><img src="../icons/icon-48.png" alt="" width="34" height="34"></div>
-                <i class="pointer"></i>
-              </div>
-              <i class="lamp" id="lamp"></i>
-            </div>
-            <div class="slotCore" id="coreDialSlot"></div>
+    <section class="panel">
+      <!-- 1. unlock -->
+      <div id="viewUnlock">
+        <h1 id="title">Locked</h1>
+        <p class="muted" id="reason">Enter your passcode to continue.</p>
+        <form id="form" autocomplete="off">
+          <div class="pw">
+            <input class="input" id="passcode" type="password" placeholder="Passcode" aria-label="Passcode" aria-describedby="error caps" autofocus>
+            <button type="button" class="reveal" id="reveal" aria-label="Show passcode"><svg class="i"><use href="icons.svg#eye"/></svg></button>
           </div>
+          <button class="btn primary wide" id="unlock" type="submit">Unlock</button>
+        </form>
+        <p class="note" id="caps" hidden>Caps Lock is on</p>
+        <p class="error" id="error" role="alert"></p>
+        <p class="wait muted small" id="countdown" aria-hidden="true"></p>
+        <div class="alts">
+          <button class="btn quiet" id="touchId" type="button" hidden><svg class="i"><use href="icons.svg#fingerprint"/></svg> Use Touch ID</button>
+          <button class="btn quiet" id="forgot" type="button">Forgot passcode?</button>
         </div>
       </div>
 
-      <!-- right: the words -->
-      <div class="panel">
-        <div class="clock" aria-hidden="true"><time id="clock"></time><p id="date"></p></div>
+      <!-- 2. recover with the recovery code -->
+      <div id="viewRecover" hidden>
+        <h1>Reset your passcode</h1>
+        <p class="muted">Enter the recovery code you saved when you set up Latch, then choose a new passcode.</p>
+        <form id="recoverForm" autocomplete="off">
+          <label>Recovery code <input class="input mono" id="recoveryCode" type="text" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX" autocapitalize="characters" spellcheck="false"></label>
+          <label>New passcode <span class="pw"><input class="input" id="newPass" type="password" autocomplete="new-password"><button type="button" class="reveal" aria-label="Show passcode"><svg class="i"><use href="icons.svg#eye"/></svg></button></span></label>
+          <label>Repeat it <input class="input" id="newPass2" type="password" autocomplete="new-password"></label>
+          <button class="btn primary wide" type="submit" id="recoverBtn">Reset passcode</button>
+        </form>
+        <p class="error" id="recoverError" role="alert"></p>
+        <div class="alts"><button class="btn quiet" id="backToUnlock" type="button">Back</button></div>
+      </div>
 
-        <!-- 1. unlock -->
-        <div id="viewUnlock">
-          <h1 id="title">This profile is locked</h1>
-          <p class="muted" id="reason">Enter your passcode to continue.</p>
-          <div id="coreHome">
-            <div id="unlockCore">
-              <form id="form" autocomplete="off">
-                <div class="pw">
-                  <input class="input" id="passcode" type="password" placeholder="Passcode" aria-label="Passcode" aria-describedby="error caps" autofocus>
-                  <button type="button" class="reveal" id="reveal" aria-label="Show passcode"><svg class="i"><use href="icons.svg#eye"/></svg></button>
-                </div>
-                <button class="btn primary wide" id="unlock" type="submit">Unlock</button>
-              </form>
-              <p class="note" id="caps" hidden>Caps Lock is on</p>
-              <p class="error" id="error" role="alert"></p>
-              <p class="wait muted small" id="countdown" aria-hidden="true"></p>
-            </div>
-          </div>
-          <div class="alts">
-            <button class="btn quiet" id="touchId" type="button" hidden><svg class="i"><use href="icons.svg#fingerprint"/></svg> Use Touch ID</button>
-            <button class="btn quiet" id="forgot" type="button">Forgot passcode?</button>
-          </div>
-        </div>
-
-        <!-- 2. recover with the recovery code -->
-        <div id="viewRecover" hidden>
-          <h1>Reset your passcode</h1>
-          <p class="muted">Enter the recovery code you saved when you set up Latch, then choose a new passcode.</p>
-          <form id="recoverForm" autocomplete="off">
-            <label>Recovery code <input class="input mono" id="recoveryCode" type="text" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX" autocapitalize="characters" spellcheck="false"></label>
-            <label>New passcode <span class="pw"><input class="input" id="newPass" type="password" autocomplete="new-password"><button type="button" class="reveal" aria-label="Show passcode"><svg class="i"><use href="icons.svg#eye"/></svg></button></span></label>
-            <label>Repeat it <input class="input" id="newPass2" type="password" autocomplete="new-password"></label>
-            <button class="btn primary wide" type="submit" id="recoverBtn">Reset passcode</button>
-          </form>
-          <p class="error" id="recoverError" role="alert"></p>
-          <div class="alts"><button class="btn quiet" id="backToUnlock" type="button">Back</button></div>
-        </div>
-
-        <!-- 3. a new recovery code after a reset -->
-        <div id="viewRecovered" hidden>
-          <h1>Passcode reset</h1>
-          <p class="muted">Your old recovery code no longer works. Save this new one somewhere safe, away from this computer.</p>
-          <div class="code" id="newCode" aria-live="polite"></div>
-          <div class="row"><button class="btn" id="copyCode" type="button"><svg class="i"><use href="icons.svg#copy"/></svg> Copy</button></div>
-          <label class="check"><input type="checkbox" id="savedCode"> I have saved my recovery code</label>
-          <button class="btn primary wide" id="finish" type="button" disabled>Unlock</button>
-        </div>
+      <!-- 3. a new recovery code after a reset -->
+      <div id="viewRecovered" hidden>
+        <h1>Passcode reset</h1>
+        <p class="muted">Your old recovery code no longer works. Save this new one somewhere safe, away from this computer.</p>
+        <div class="code" id="newCode" aria-live="polite"></div>
+        <div class="row"><button class="btn" id="copyCode" type="button"><svg class="i"><use href="icons.svg#copy"/></svg> Copy</button></div>
+        <label class="check"><input type="checkbox" id="savedCode"> I have saved my recovery code</label>
+        <button class="btn primary wide" id="finish" type="button" disabled>Unlock</button>
       </div>
     </section>
 

@@ -1,7 +1,4 @@
 import { b64u } from '../src/lib/webauthn.js';
-import { mountAegis } from './aegis.js';
-import { mountScene } from './scene.js';
-import { mountPoster } from './poster.js';
 import { mountDial } from './lockdial.js';
 
 const $ = (id) => document.getElementById(id);
@@ -9,38 +6,27 @@ const send = (message) => chrome.runtime.sendMessage(message);
 const form = $('form'), input = $('passcode'), button = $('unlock');
 let countdown;
 let calmTimer;
-
 const preview = location.hash === '#preview';       // opened from Settings: nothing real happens here
-mountPoster($('poster'));
 
-// Two lock-screen styles share everything but the picture on the left. "pet" is whatever reacts to what you do:
-// Aegis on his trading card, or the dial and lamp of the combination lock.
-const style = document.documentElement.dataset.lockStyle;
-let pet;
-if (style === 'dial') {
-  const dial = mountDial($('dialVisual'));
-  $('coreDialSlot').append($('unlockCore'));                    // the passcode field lives inside the lock
-  let current = 'guard';
-  pet = {
-    set(next) {
-      if (next === current) return;
-      current = next;
-      if (next === 'growl') dial.wrong();
-      else if (next === 'happy') dial.open();
-      else if (next === 'guard') dial.calm();
-    },
-    turn: (length) => dial.turn(length),
-    lookAt() {},
-  };
-} else {
-  mountScene($('sceneSlot'));
-  const aegis = mountAegis($('mascotSlot'), { state: 'guard', track: false });   // one pointer handler below drives the tilt and his eyes
-  pet = { set: (next) => aegis.set(next), turn() {}, lookAt: (x, y) => aegis.lookAt(x, y) };
-}
+// The lock reacts to what you do: the dial turns a notch for every character, the lamp glows,
+// a wrong guess snaps it back and flashes red, and the shackle lifts when it opens.
+const dial = mountDial($('dialVisual'));
+let current = 'guard';
+const pet = {
+  set(next) {
+    if (next === current) return;
+    current = next;
+    if (next === 'growl') dial.wrong();
+    else if (next === 'happy') dial.open();
+    else if (next === 'guard') dial.calm();
+  },
+  turn: (length) => dial.turn(length),
+  lookAt() {},
+};
 const calm = (after = 0) => { clearTimeout(calmTimer); calmTimer = setTimeout(() => pet.set(document.activeElement === input && input.value ? 'typing' : 'guard'), after); };
 
-// the visual tilts toward the pointer, and layers slide at different depths
-const visual = document.querySelector('.visual');
+// the lock tilts a touch toward the pointer
+const visual = $('dialVisual');
 if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
   let raf = 0;
   window.addEventListener('pointermove', (event) => {
@@ -49,7 +35,6 @@ if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
       raf = 0;
       visual.style.setProperty('--mx', (event.clientX / innerWidth * 2 - 1).toFixed(3));
       visual.style.setProperty('--my', (event.clientY / innerHeight * 2 - 1).toFixed(3));
-      pet.lookAt(event.clientX, event.clientY);
     });
   }, { passive: true });
 }

@@ -465,16 +465,6 @@ $('clearActivity').addEventListener('click', () => {
   });
 });
 
-// ---------- lock screen style ----------
-function renderLockStyle() {
-  const current = localStorage.getItem('lockStyle') === 'dial' ? 'dial' : 'card';
-  for (const b of document.querySelectorAll('#lockStyleRow .seg button')) b.setAttribute('aria-pressed', String(b.dataset.style === current));
-}
-for (const b of document.querySelectorAll('#lockStyleRow .seg button')) {
-  b.addEventListener('click', () => { localStorage.setItem('lockStyle', b.dataset.style); renderLockStyle(); toast('Lock screen changed. Try Preview.'); });
-}
-$('lockPreview').addEventListener('click', () => chrome.tabs.create({ url: chrome.runtime.getURL('ui/lock.html#preview') }));
-
 // ---------- help ----------
 $('shortcutsOpen').addEventListener('click', async () => {
   try { await chrome.tabs.create({ url: 'chrome://extensions/shortcuts' }); }
@@ -587,7 +577,6 @@ async function load() {
   mountScene($('obScene'));
   obAegis = mountAegis($('obMascot'), { state: 'guard' });
   try { touchAvailable = Boolean(window.PublicKeyCredential) && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable(); } catch { touchAvailable = false; }
-  renderLockStyle();
   await load();
   // Someone who set Latch up before onboarding existed has already finished it.
   const { onboarded, recoveryAck } = await chrome.storage.local.get(['onboarded', 'recoveryAck']);

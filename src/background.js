@@ -39,6 +39,7 @@ const EMPTY_SESSION = {
   windowStates: {},   // window id -> state before we minimized it
   mutedTabs: [],      // tab ids we muted
   failures: 0,        // consecutive failed attempts to enforce the lock
+  focusedBefore: null, // the window you were using when it locked, so unlocking can hand focus straight back
 };
 
 const getSettings = async () => normalizeSettings(await store.get('settings'));
@@ -86,7 +87,9 @@ async function lock(reason) {
     }
     const state = await getState();
     if (!state.locked) {
-      await patchState({ ...EMPTY_SESSION, locked: true, reason, lockedAt: Date.now(), error: '' });
+      let focusedBefore = null;
+      try { focusedBefore = (await chrome.windows.getLastFocused()).id; } catch { /* none */ }
+      await patchState({ ...EMPTY_SESSION, focusedBefore, locked: true, reason, lockedAt: Date.now(), error: '' });
       await logEvent(store, 'lock', reason);
     }
     await enforceLocked();
@@ -117,10 +120,12 @@ async function minimizeWindows(settings) {
   const windows = await chrome.windows.getAll({ windowTypes: ['normal', 'app'] });
   for (const win of windows) {
     if (win.id === state.lockWindowId || !covers(settings, win)) continue;
+    // A full-screen window lives in its own macOS Space. Leaving it and re-entering it is what stranded people on
+    // the lock page, so full-screen windows are never touched: the page cover and the lock window handle them.
+    if (win.state === 'fullscreen') continue;
     if (!(win.id in windowStates)) windowStates[win.id] = win.state;
     if (win.state === 'minimized') continue;
     try {
-      if (win.state === 'fullscreen') await chrome.windows.update(win.id, { state: 'normal' });
       await chrome.windows.update(win.id, { state: 'minimized' });
     } catch { /* window went away; nothing to do */ }
   }
@@ -180,16 +185,20 @@ function unlockNow({ error = '', method = 'passcode' } = {}) {
     for (const id of state.mutedTabs) {
       try { await chrome.tabs.update(id, { muted: false }); } catch { /* tab is gone */ }
     }
+    // Close our window first, then bring back only what we minimized, then give focus back to where you were.
+    await closeLockWindow(state.lockWindowId);
     let focusId = null;
     for (const [id, previous] of Object.entries(state.windowStates)) {
       try {
-        await chrome.windows.update(Number(id), { state: previous });
+        await chrome.windows.update(Number(id), { state: previous === 'minimized' ? 'minimized' : previous });
         if (previous !== 'minimized') focusId = Number(id);
       } catch { /* window is gone */ }
     }
-    await closeLockWindow(state.lockWindowId);
-    if (focusId != null) { try { await chrome.windows.update(focusId, { focused: true }); } catch { /* gone */ } }
-    await patchState({ lockWindowId: null, windowStates: {}, mutedTabs: [], failures: 0 });
+    for (const candidate of [state.focusedBefore, focusId]) {
+      if (candidate == null) continue;
+      try { await chrome.windows.update(candidate, { focused: true }); break; } catch { /* try the next */ }
+    }
+    await patchState({ lockWindowId: null, windowStates: {}, mutedTabs: [], failures: 0, focusedBefore: null });
     return { ok: true };
   });
 }
