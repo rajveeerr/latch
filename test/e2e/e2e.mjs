@@ -129,7 +129,7 @@ try {
   // Wrong passcode, then right.
   const lock2 = lockPage();
   await lock2.fill('#passcode', 'nope');
-  assert.equal(await lock2.evaluate(() => getComputedStyle(document.getElementById('dialVisual')).getPropertyValue('--turn').trim()), '100.8deg', 'the dial turns a notch per character');
+  assert.equal(await lock2.evaluate(() => getComputedStyle(document.getElementById('dialVisual')).getPropertyValue('--turn').trim()), '100.0deg', 'the knob turns a notch per character');
   await lock2.click('#unlock');
   await lock2.waitForFunction(() => document.getElementById('error').textContent.includes('Wrong'));
   await lock2.waitForSelector('#dialVisual.wrong');

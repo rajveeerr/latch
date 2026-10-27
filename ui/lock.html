@@ -13,18 +13,22 @@
   <main class="stage">
     <div class="clock" aria-hidden="true"><time id="clock"></time><p id="date"></p></div>
 
-    <div class="lockbox" id="dialVisual" aria-hidden="true">
-      <div class="shackle"></div>
-      <div class="lockbody">
-        <i class="screw tl"></i><i class="screw tr"></i><i class="screw bl"></i><i class="screw br"></i>
-        <div class="dialwrap">
-          <div class="bezel">
-            <div class="dial" id="dial"></div>
-            <div class="cap"><img src="../icons/icon-48.png" alt="" width="34" height="34"></div>
-            <i class="pointer"></i>
-          </div>
-          <i class="lamp" id="lamp"></i>
+    <div class="device" id="dialVisual" aria-hidden="true">
+      <div class="body">
+        <div class="row1">
+          <div class="plate brushed small"></div>
+          <div class="plate brushed long"></div>
         </div>
+        <div class="row2">
+          <div class="plate brushed grille"></div>
+          <div class="plate brushed controls">
+            <div class="lcd"><span class="lcdBrand">LATCH</span><span class="lcdText" id="lcdText">LOCKED</span><span class="lcdDots" id="lcdDots"></span></div>
+            <div class="knob"><i></i></div>
+            <div class="lamp" id="lamp"></div>
+          </div>
+        </div>
+        <div class="deck"></div>
+        <div class="slot"><i class="bolt"></i></div>
       </div>
     </div>
 
@@ -33,12 +37,12 @@
       <div id="viewUnlock">
         <h1 id="title">Locked</h1>
         <p class="muted" id="reason">Enter your passcode to continue.</p>
-        <form id="form" autocomplete="off">
-          <div class="pw">
+        <form id="form" class="pill" autocomplete="off">
+          <button class="pillBtn" id="unlock" type="submit"><svg class="i"><use href="icons.svg#unlock"/></svg> Unlock</button>
+          <div class="pillField pw">
             <input class="input" id="passcode" type="password" placeholder="Passcode" aria-label="Passcode" aria-describedby="error caps" autofocus>
             <button type="button" class="reveal" id="reveal" aria-label="Show passcode"><svg class="i"><use href="icons.svg#eye"/></svg></button>
           </div>
-          <button class="btn primary wide" id="unlock" type="submit">Unlock</button>
         </form>
         <p class="note" id="caps" hidden>Caps Lock is on</p>
         <p class="error" id="error" role="alert"></p>
