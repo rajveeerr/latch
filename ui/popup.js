@@ -24,6 +24,8 @@ async function render() {
   $('setup').hidden = status.hasPasscode;
   $('main').hidden = !status.hasPasscode;
   $('resumeBar').hidden = !status.paused;
+  $('pauseToggle').hidden = Boolean(status.paused);                 // already paused: offer Resume, not Pause
+  if (status.paused) $('pausePanel').hidden = true;
   $('lock').hidden = privateLocked;
   $('lock').disabled = privateBlocked;
   $('unlockPrivate').hidden = !privateLocked;
@@ -46,7 +48,7 @@ async function render() {
     const forever = status.paused - Date.now() > 300 * 24 * 3600000;
     $('status').textContent = 'Paused';
     dot.classList.add('warn');
-    $('pausedText').textContent = forever ? 'Paused until you resume' : 'Paused until ' + new Date(status.paused).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    $('pausedText').textContent = forever ? 'Until you resume' : 'Back on at ' + new Date(status.paused).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     $('detail').textContent = '';
     return;
   }

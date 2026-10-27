@@ -136,7 +136,8 @@ body[data-setup] #overview .actions { display: none; }
   .nav a { scroll-snap-align: start; }
   .nav a { white-space: nowrap; }
   .hero { grid-template-columns: 1fr; padding: 22px 20px 8px; }
-  .heroArt { order: -1; width: 120px; margin: 0 0 -6px; }
+  .hero { position: relative; padding-right: 100px; }
+  .heroArt { position: absolute; top: 14px; right: 12px; width: 84px; margin: 0; }
   .seg.chips { display: grid; grid-template-columns: repeat(3, 1fr); }
   .seg.chips[data-cols="2"] { grid-template-columns: repeat(2, 1fr); }
   .choices { grid-template-columns: 1fr; }
@@ -148,10 +149,10 @@ body[data-setup] #overview .actions { display: none; }
 /* ---------- first-run onboarding ---------- */
 .ob { min-height: 100vh; display: grid; place-items: center; padding: 28px 16px; }
 .obCard { width: min(540px, 100%); overflow: hidden; position: relative; }
-.obHero { position: relative; height: 190px; overflow: hidden; background: #131f4d; }
+.obHero { position: relative; height: 236px; overflow: hidden; background: #131f4d; }
 .obScene { position: absolute; inset: 0; }
-.obScene svg { position: absolute; left: 0; top: -40px; width: 100%; height: auto; min-height: 260px; }
-.obKerby { position: absolute; left: 50%; bottom: -26px; width: 170px; translate: -50% 0; z-index: 2; }
+.obScene svg { position: absolute; left: 0; top: -14px; width: 100%; height: auto; min-height: 270px; }
+.obKerby { position: absolute; left: 50%; bottom: 2px; width: 168px; translate: -50% 0; z-index: 2; }
 .obBody { padding: 26px 30px 26px; display: grid; gap: 14px; }
 .obDots { list-style: none; display: flex; gap: 6px; margin: 0; padding: 0; justify-content: center; }
 .obDots li { width: 7px; height: 7px; border-radius: 50%; background: var(--line-strong); transition: background-color .2s, width .25s var(--ease); }
@@ -164,3 +165,7 @@ body[data-setup] #overview .actions { display: none; }
 .obSkip { position: absolute; top: 10px; right: 10px; z-index: 3; color: #eef1ff; background: rgba(10, 20, 60, .35); }
 .obSkip:hover { background: rgba(10, 20, 60, .55); color: #fff; }
 .ob .card.pad { box-shadow: none; background: none; padding: 0; }
+
+/* the drawn grid is quiet behind dense settings, and full strength on the onboarding stage */
+body::before { opacity: .4; }
+body[data-ob]::before { opacity: 1; }

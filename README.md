@@ -18,7 +18,7 @@
 
 <p align="center">
   <a href="https://github.com/rajveeerr/latch/actions/workflows/test.yml"><img src="https://github.com/rajveeerr/latch/actions/workflows/test.yml/badge.svg" alt="tests"></a>
-  <img src="https://img.shields.io/badge/download-206%20KB-2b4fdb" alt="206 KB">
+  <img src="https://img.shields.io/badge/download-207%20KB-2b4fdb" alt="206 KB">
   <img src="https://img.shields.io/badge/permissions-3-2b4fdb" alt="3 permissions">
   <img src="https://img.shields.io/badge/network-none-2b4fdb" alt="no network">
   <img src="https://img.shields.io/badge/license-MIT-14171f" alt="MIT">
@@ -80,7 +80,7 @@ Measured on a MacBook with Chromium:
 
 | | |
 |---|---|
-| Download | **206 KB** (fonts and art included) |
+| Download | **207 KB** (fonts and art included) |
 | Script on every web page | **5 KB**, which only draws a cover and reads nothing |
 | Lock screen first paint | **~70 ms** (popup ~60 ms, settings ~90 ms) |
 | Permissions | **3**: `storage`, `idle`, `alarms` |
@@ -98,6 +98,7 @@ Other lockers are worth knowing about: [Locksy](https://www.locksy.dev/) (per-ta
 
 Latch is a **privacy lock for a browser you leave on a desk**, not a security boundary.
 
+- **The install prompt will say Latch can read and change data on all sites.** That is how any extension covers pages: a 5 KB script runs on every page to draw the cover. It reads nothing and sends nothing, and the code is right here to check.
 - It stops a casual passer-by, not someone with time, skill or a terminal. A browser extension cannot hide the tab strip, so minimizing is best effort and a lock window sits in front.
 - **Private windows only** mode is lighter protection: no lock window in front, just the page cover, which DevTools can remove.
 - Anyone who can reach `brave://extensions` can remove Latch. Use your computer's own lock and a sign-in password too.

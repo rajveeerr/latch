@@ -21,16 +21,16 @@
   <main id="top">
     <section class="hero wrap">
       <div class="heroText">
-        <p class="pill"><svg class="i"><use href="assets/icons.svg#paw"/></svg> Free, open source, no accounts</p>
         <h1>Lock Brave like Safari locks private windows.</h1>
         <p class="lead">A tiny passcode and Touch ID lock that covers your browser when you step away. It never closes, reloads or changes a single tab.</p>
         <div class="cta"><a class="btn primary wide2" href="#install">Add it to Brave</a><a class="btn wide2" href="https://github.com/rajveeerr/latch">View on GitHub <svg class="i"><use href="assets/icons.svg#arrow-up-right"/></svg></a></div>
-        <ul class="facts"><li><b>3</b> permissions</li><li><b>0</b> network calls</li><li><b>0</b> tabs closed. Ever.</li></ul>
+        <p class="proof">Free and open source. Three permissions, no network, no accounts, and it never closes a tab.</p>
       </div>
       <div class="cardwrap"><div class="tilt" id="tilt"><div class="card">
         <div class="plate"><span class="nm">Kerby</span><span class="role">Guardian of the gate</span></div>
         <div class="art"><div class="scene-slot" id="sceneSlot"></div><div class="kerby-slot" id="kerbySlot"></div></div>
         <dl class="stats"><div><dd>∞</dd><dt>Patience</dt></div><div><dd>3</dd><dt>Heads</dt></div><div><dd>0</dd><dt>Tabs lost</dt></div></dl>
+        <div class="branch-slot" id="branchSlot"></div>
         <i class="sheen"></i>
       </div></div></div>
     </section>
@@ -50,26 +50,18 @@
       </ol>
     </section>
 
-    <section class="poster" aria-label="Poster">
-      <div class="posterFrame">
-        <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span>
-        <svg class="rings" viewBox="0 0 600 600" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1"><circle cx="300" cy="300" r="120"/><circle cx="300" cy="300" r="170"/><circle cx="300" cy="300" r="220"/><circle cx="300" cy="300" r="270"/><path d="M0 300h600M300 0v600M88 88l424 424M512 88L88 512"/></g></svg>
-        <img class="bust" src="assets/bust.svg" alt="A marble bust in profile" width="360" height="450">
-        <p class="posterLine">Nothing gets past the gate.</p>
-      </div>
-    </section>
 
     <section class="what wrap" id="what">
       <h2>What it does</h2>
       <p class="lead2">Everything a lock should do, and nothing it shouldn't.</p>
-      <div class="grid">
-        <article><svg class="i"><use href="assets/icons.svg#lock"/></svg><h3>Locks instantly or on a timer</h3><p>A shortcut, a button, after inactivity, in the background, on sleep or at startup.</p></article>
-        <article><svg class="i"><use href="assets/icons.svg#fingerprint"/></svg><h3>Touch ID <span class="beta">Beta</span></h3><p>Unlock with Touch ID or a device passkey. Your passcode always works too.</p></article>
-        <article><svg class="i"><use href="assets/icons.svg#mask"/></svg><h3>Private windows, like Safari</h3><p>Lock only your private windows and leave the rest of the browser open.</p></article>
-        <article><svg class="i"><use href="assets/icons.svg#key"/></svg><h3>A recovery code</h3><p>Forget your passcode and you do not have to remove the extension to get back in.</p></article>
-        <article><svg class="i"><use href="assets/icons.svg#activity"/></svg><h3>Know who tried</h3><p>A private log of locks, unlocks and wrong guesses, kept on your computer only.</p></article>
-        <article><svg class="i"><use href="assets/icons.svg#layers"/></svg><h3>Covers, never closes</h3><p>Pages are covered, media paused and tabs muted. Everything is put back exactly as it was.</p></article>
-      </div>
+      <dl class="does">
+        <div><dt>Locks instantly or on a timer</dt><dd>A shortcut, a button, after inactivity, in the background, on sleep or at startup.</dd></div>
+        <div><dt>Touch ID <span class="beta">Beta</span></dt><dd>Unlock with Touch ID or a device passkey. Your passcode always works too.</dd></div>
+        <div><dt>Private windows, like Safari</dt><dd>Lock only your private windows and leave the rest of the browser open.</dd></div>
+        <div><dt>A recovery code</dt><dd>Forget your passcode and you do not have to remove the extension to get back in.</dd></div>
+        <div><dt>Know who tried</dt><dd>A private log of locks, unlocks and wrong guesses, kept on your computer only.</dd></div>
+        <div><dt>Covers, never closes</dt><dd>Pages are covered, media paused and tabs muted. Everything is put back exactly as it was.</dd></div>
+      </dl>
     </section>
 
     <section class="how wrap">
@@ -99,14 +91,23 @@
     <section class="install wrap" id="install">
       <h2>Install in a minute</h2>
       <p class="lead2">Latch is not in a web store yet, so you load it as an unpacked extension. This is normal for new extensions.</p>
+      <p class="gist"><b>A privacy lock, not a vault.</b> It stops a passer-by, not an expert. Pair it with your computer's own lock.</p>
       <ol class="steps">
         <li><span>1</span><div><h3>Download it</h3><p><a href="https://github.com/rajveeerr/latch/releases/latest">Get the latest zip</a> and unzip it somewhere permanent.</p></div></li>
         <li><span>2</span><div><h3>Open the extensions page</h3><p>Paste <code>brave://extensions</code> in a tab and switch on <b>Developer mode</b>.</p><button class="btn" id="copyExt" type="button">Copy brave://extensions</button></div></li>
         <li><span>3</span><div><h3>Load it</h3><p>Click <b>Load unpacked</b> and choose the unzipped folder. Kerby will say hello.</p></div></li>
       </ol>
       <details class="limits"><summary>Honest limits</summary>
-        <p>Latch is a privacy lock for a browser you leave on a desk, not a security boundary. It stops a casual passer-by, not someone with time and a terminal. Pair it with your computer's own lock: on a Mac press <kbd>⌃</kbd><kbd>⌘</kbd><kbd>Q</kbd>, and keep a sign-in password on it. Touch ID is in beta and has not been tested on real hardware in Brave yet.</p>
+        <p>Latch is a privacy lock for a browser you leave on a desk, not a security boundary. <b>The install prompt will say it can read and change data on all sites.</b> That is how any extension covers pages: a 5 KB script runs on every page to draw the cover. It reads nothing and sends nothing, and the code is open for you to check. It stops a casual passer-by, not someone with time and a terminal. Pair it with your computer's own lock: on a Mac press <kbd>⌃</kbd><kbd>⌘</kbd><kbd>Q</kbd>, and keep a sign-in password on it. Touch ID is in beta and has not been tested on real hardware in Brave yet.</p>
       </details>
+    </section>
+    <section class="poster" aria-label="Get Latch">
+      <div class="posterFrame">
+        <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span>
+        <svg class="rings" viewBox="0 0 600 600" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1"><circle cx="300" cy="300" r="120"/><circle cx="300" cy="300" r="170"/><circle cx="300" cy="300" r="220"/><circle cx="300" cy="300" r="270"/><path d="M0 300h600M300 0v600M88 88l424 424M512 88L88 512"/></g></svg>
+        <div class="posterText"><p class="posterLine">Nothing gets past the gate.</p><a class="btn primary wide2" href="https://github.com/rajveeerr/latch/releases/latest">Get Latch, free</a></div>
+        <img class="bust" src="assets/bust.svg" alt="" width="360" height="450">
+      </div>
     </section>
   </main>
 

@@ -1,5 +1,5 @@
 import { mountKerby } from './assets/kerby.js';
-import { mountScene } from './assets/scene.js';
+import { mountScene, BRANCH } from './assets/scene.js';
 import { mountMechanism } from './mechanism.js';
 
 const $ = (id) => document.getElementById(id);
@@ -7,6 +7,7 @@ const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // the hero card: Kerby on his painted scene, tilting toward the pointer
 mountScene($('sceneSlot'));
+$('branchSlot').innerHTML = BRANCH;
 mountKerby($('kerbySlot'), { state: 'guard' });
 if (!reduce) {
   const tilt = $('tilt');

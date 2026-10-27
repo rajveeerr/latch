@@ -13,10 +13,10 @@ const root = path.resolve(import.meta.dirname, '..');
 const TONES = {
   stone: ['#F7F4EE', '#DDD7CA', '#C5BDAC'],
   slab: ['#E6E1D5', '#CCC5B5', '#B4AC99'],
-  ink: ['#55524D', '#37352F', '#242321'],
+  ink: ['#51609a', '#37457d', '#252f5a'],
   steel: ['#F0EEEA', '#D3D0CA', '#B8B4AC'],
-  bolt: ['#77736C', '#524F49', '#3A3833'],            // dark enough that its position reads at small sizes
-  lampOn: ['#7BE0C4', '#35A68C', '#25806B'],
+  bolt: ['#6575b0', '#43518b', '#2d3868'],            // dark enough that its position reads at small sizes
+  lampOn: ['#9bb8ff', '#4f7bf2', '#3359d4'],
   lampOff: ['#DAD6CE', '#C1BDB3', '#A9A59B'],
 };
 

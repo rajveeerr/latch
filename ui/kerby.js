@@ -55,22 +55,32 @@ export function mountKerby(container, { state = 'guard', track = true } = {}) {
   const root = container.querySelector('svg');
   root.classList.add('kerby');
   root.dataset.state = state;
-  const pupils = [...root.querySelectorAll('.pupil')];
+  const eyes = [...root.querySelectorAll('.eye')].map((eye) => ({ eye, pupil: eye.querySelector('.pupil') }));
   let frame = 0;
-  let blinkTimer;
+  let blinkTimer = 0;
+  let blinkOff = 0;
   const reduce = matchMedia('(prefers-reduced-motion: reduce)');
 
-  // eyes: look toward the pointer, a few units at most
+  // Eyes look toward the pointer, a few units at most. The pointer offset is measured from the (fixed) eye and
+  // converted into each head's own rotated and scaled space, so the side heads look at the pointer too.
   function look(clientX, clientY) {
     if (frame) return;
     frame = requestAnimationFrame(() => {
       frame = 0;
-      for (const pupil of pupils) {
-        const box = pupil.getBoundingClientRect();
+      for (const { eye, pupil } of eyes) {
+        const box = eye.getBoundingClientRect();
+        if (!box.width) continue;                                   // hidden (for example a finished onboarding)
         const dx = clientX - (box.left + box.width / 2), dy = clientY - (box.top + box.height / 2);
         const dist = Math.hypot(dx, dy) || 1;
-        const reach = Math.min(5, dist / 28);
-        pupil.style.transform = `translate(${(dx / dist * reach).toFixed(2)}px, ${(dy / dist * reach).toFixed(2)}px)`;
+        const reach = Math.min(1, dist / 160);
+        const m = eye.getScreenCTM();
+        if (!m) continue;
+        const inv = m.inverse();                                    // screen space -> this eye's local space
+        const ux = dx / dist * reach, uy = dy / dist * reach;
+        const lx = inv.a * ux + inv.c * uy, ly = inv.b * ux + inv.d * uy;
+        const len = Math.hypot(lx, ly) || 1;
+        const r = 5 * reach;                                        // 5 units of travel inside the eye
+        pupil.style.transform = `translate(${(lx / len * r).toFixed(2)}px, ${(ly / len * r).toFixed(2)}px)`;
       }
     });
   }
@@ -80,7 +90,7 @@ export function mountKerby(container, { state = 'guard', track = true } = {}) {
   function blink() {
     if (root.dataset.state === 'guard' && !reduce.matches) {
       root.classList.add('blink');
-      setTimeout(() => root.classList.remove('blink'), 140);
+      blinkOff = setTimeout(() => root.classList.remove('blink'), 140);
     }
     blinkTimer = setTimeout(blink, 2400 + Math.random() * 3200);
   }
@@ -93,6 +103,11 @@ export function mountKerby(container, { state = 'guard', track = true } = {}) {
       if (next === 'growl') { root.classList.remove('shake'); void root.getBoundingClientRect(); root.classList.add('shake'); }
     },
     lookAt: look,
-    destroy() { window.removeEventListener('pointermove', onMove); clearTimeout(blinkTimer); },
+    destroy() {
+      window.removeEventListener('pointermove', onMove);
+      cancelAnimationFrame(frame);
+      clearTimeout(blinkTimer);
+      clearTimeout(blinkOff);
+    },
   };
 }

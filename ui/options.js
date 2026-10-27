@@ -495,8 +495,11 @@ function obGo(name) {
   const index = OB_PANES.indexOf(name);
   $('obDots').innerHTML = OB_PANES.filter((key) => key !== 'touch' || touchAvailable).map((key) => `<li class="${key === name ? 'on' : OB_PANES.indexOf(key) < index ? 'done' : ''}"></li>`).join('');
   obKerby.set(OB_KERBY[name]);
+  const total = OB_PANES.filter((key) => key !== 'touch' || touchAvailable).length;
+  $('obStepText').textContent = `Step ${Math.min(index + 1, total)} of ${total}`;
   $('obSkip').hidden = !status.hasPasscode || name === 'welcome' || name === 'passcode' || name === 'recovery';
   if (name === 'passcode') { placePasscodeForm(); $('newPasscode').focus(); }
+  else { const heading = $(OB_IDS[name]).querySelector('h1, h2'); if (heading) { heading.tabIndex = -1; heading.focus({ preventScroll: true }); } }   // keep keyboard focus on the new step
   if (name === 'private') renderObPrivate();
   if (name === 'mac') {
     const mac = /Mac/.test(navigator.platform);
@@ -519,12 +522,15 @@ async function startOnboarding() {
   $('shell').hidden = true;
   $('onboarding').hidden = false;
   placePasscodeForm();
-  obGo(status.hasPasscode ? 'recovery' : 'welcome');
+  document.body.toggleAttribute('data-ob', true);
+  obGo('welcome');
 }
 
 async function finishOnboarding() {
   await chrome.storage.local.set({ onboarded: true });
   obActive = false;
+  obKerby.destroy();                       // he is hidden now, so stop him blinking and tracking
+  document.body.removeAttribute('data-ob');
   $('onboarding').hidden = true;
   $('shell').hidden = false;
   await load();
@@ -580,4 +586,10 @@ async function load() {
 })();
 
 // Coming back from the extension settings page: re-check whether private windows are allowed.
-window.addEventListener('focus', async () => { if (status) { await load(); if (obActive && obCurrent === 'private') renderObPrivate(); } });
+async function refreshStatus() {
+  status = await send({ type: 'getStatus' });
+  renderOverview();
+  renderIncognito();
+  if (obActive && obCurrent === 'private') renderObPrivate();
+}
+window.addEventListener('focus', () => { if (status) refreshStatus(); });

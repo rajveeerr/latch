@@ -39,7 +39,7 @@
         b { font-size: 20px; font-weight: 600; letter-spacing: -.015em; }
         span { color: #565d6f; }
         button { margin-top: 14px; height: 36px; padding: 0 18px; border: 0; border-radius: 10px; cursor: pointer;
-                 font: 600 13.5px/1 inherit; color: #fff; background: linear-gradient(180deg, #4569f2, #2142cf);
+                 font: 600 13.5px/1 inherit; color: #fff; background: linear-gradient(180deg, #3d61ec, #2142cf);
                  box-shadow: inset 0 1px 0 rgba(255,255,255,.24), 0 1px 2px rgba(20,40,140,.35); }
         button:focus-visible { outline: 2px solid #f6f4ef; box-shadow: 0 0 0 4px #2b4fdb; }
         @media (prefers-color-scheme: dark) {

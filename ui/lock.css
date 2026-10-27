@@ -7,7 +7,7 @@
 
 /* ---- the trading card ---- */
 .cardwrap { perspective: 1000px; }
-.tilt { transform: rotateX(calc(var(--my, 0) * -6deg)) rotateY(calc(var(--mx, 0) * 8deg)); transition: transform .25s var(--ease); transform-style: preserve-3d; will-change: transform; }
+.tilt { transform: rotateX(calc(var(--my, 0) * -6deg)) rotateY(calc(var(--mx, 0) * 8deg)); transition: transform .25s var(--ease); transform-style: preserve-3d; }
 .card {
   position: relative; width: min(384px, 84vw); padding: 14px 14px 12px; border-radius: 26px; color: #eef1ff; isolation: isolate;
   background: linear-gradient(165deg, #243d8c 0%, #131f4d 62%, #0e1738 100%);
@@ -31,8 +31,12 @@
 .stats dt { font-size: 11px; color: rgba(238, 241, 255, .66); }
 .sheen { position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 4; background: radial-gradient(circle at calc(50% + var(--mx, 0) * 40%) calc(30% + var(--my, 0) * 30%), rgba(255, 255, 255, .22), transparent 46%); }
 
+/* the laurel branch crosses the card edge */
+.branch-slot { position: absolute; right: -30px; top: 40px; width: 92px; z-index: 5; pointer-events: none; transform: translateZ(30px) rotate(8deg); }
+.branch { display: block; width: 100%; height: auto; filter: drop-shadow(0 4px 6px rgba(0, 0, 0, .25)); }
+
 /* ---- the panel ---- */
-.panel { display: grid; gap: 14px; align-content: center; }
+.panel { display: grid; gap: 14px; align-content: start; min-height: 470px; }
 .clock time { display: block; font: 500 64px/1 var(--display); letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
 .clock .ampm { font: 500 18px var(--font); letter-spacing: 0; margin-left: 8px; color: var(--text-2); }
 .clock p { margin-top: 8px; font-size: 14.5px; color: var(--text-2); }
@@ -45,8 +49,9 @@ label { display: grid; gap: 6px; font-size: 13px; font-weight: 500; }
 .mono { font-family: var(--mono); letter-spacing: .02em; }
 .note { font-size: 12.5px; color: var(--warn); }
 .error { font-size: 13px; color: var(--danger); }
-.error:empty, .wait:empty { display: none; }
-.alts { display: flex; gap: 6px; margin: 2px 0 0 -14px; flex-wrap: wrap; }
+.error { min-height: 1.4em; } .wait { min-height: 0; } .wait:empty { display: none; }
+.error:empty { display: block; }
+.alts { display: flex; gap: 6px; margin: -6px 0 0 -14px; flex-wrap: wrap; }
 .code { font: 500 17px/1.4 var(--mono); letter-spacing: .04em; padding: 14px 16px; border-radius: var(--r-ctl); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-strong); word-break: break-all; }
 .check { display: flex; align-items: center; gap: 9px; font-weight: 400; }
 .check input { width: 16px; height: 16px; accent-color: var(--accent); }
@@ -56,9 +61,14 @@ label { display: grid; gap: 6px; font-size: 13px; font-weight: 500; }
 @media (prefers-reduced-motion: no-preference) { .tilt { animation: bob 7s ease-in-out infinite; } @keyframes bob { 50% { translate: 0 -5px; } } }
 
 @media (max-width: 880px) {
+  .stats { display: none; } .art { margin-bottom: 14px; } .branch-slot { right: -14px; width: 70px; }
+  .panel { min-height: 0; }
   .stage { padding: 20px 22px 22px; }
   .duo { grid-template-columns: 1fr; justify-items: center; gap: 28px; }
   .cardwrap { order: -1; } .panel { width: min(380px, 100%); }
   .card { width: min(300px, 80vw); } .clock time { font-size: 46px; }
 }
-@media (max-height: 720px) and (min-width: 881px) { .card { width: 300px; } .clock time { font-size: 48px; } }
+@media (max-height: 760px) and (min-width: 881px) { .card { width: 300px; } .clock time { font-size: 48px; } .stats { display: none; } .art { margin-bottom: 14px; } }
+
+/* a little lift on success */
+@media (prefers-reduced-motion: no-preference) { .stage.done .tilt { animation: lift .5s var(--ease) both; } @keyframes lift { 50% { transform: translateY(-12px) scale(1.03); } } }

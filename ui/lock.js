@@ -1,6 +1,6 @@
 import { b64u } from '../src/lib/webauthn.js';
 import { mountKerby } from './kerby.js';
-import { mountScene } from './scene.js';
+import { mountScene, BRANCH } from './scene.js';
 
 const $ = (id) => document.getElementById(id);
 const send = (message) => chrome.runtime.sendMessage(message);
@@ -9,7 +9,8 @@ let countdown;
 let calmTimer;
 
 mountScene($('sceneSlot'));
-const kerby = mountKerby($('kerbySlot'), { state: 'guard' });
+$('branchSlot').innerHTML = BRANCH;
+const kerby = mountKerby($('kerbySlot'), { state: 'guard', track: false });   // one pointer handler below drives both the tilt and his eyes
 const calm = (after = 0) => { clearTimeout(calmTimer); calmTimer = setTimeout(() => kerby.set(document.activeElement === input && input.value ? 'typing' : 'guard'), after); };
 
 // the card tilts toward the pointer, and the painted layers slide at different depths
@@ -22,6 +23,7 @@ if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
       raf = 0;
       tilt.style.setProperty('--mx', (event.clientX / innerWidth * 2 - 1).toFixed(3));
       tilt.style.setProperty('--my', (event.clientY / innerHeight * 2 - 1).toFixed(3));
+      kerby.lookAt(event.clientX, event.clientY);
     });
   }, { passive: true });
 }
@@ -55,6 +57,10 @@ function show(view) {
   focus.focus();
 }
 $('forgot').addEventListener('click', () => show('viewRecover'));
+for (const id of ['newPass', 'newPass2']) {
+  $(id).addEventListener('input', () => kerby.set($(id).value ? 'typing' : 'guard'));
+  $(id).addEventListener('blur', () => kerby.set('guard'));
+}
 $('backToUnlock').addEventListener('click', () => show('viewUnlock'));
 
 // show / hide on every passcode field
@@ -114,6 +120,7 @@ function showWait(ms) {
 function done(method) {
   kerby.set('happy');
   document.querySelector('.panel').classList.add('done');
+  document.querySelector('.stage').classList.add('done');
   $('title').textContent = 'Unlocked';
   $('reason').textContent = 'Restoring your windows…';
   button.disabled = true;
@@ -121,16 +128,7 @@ function done(method) {
   setTimeout(() => { $('reason').textContent = 'You can close this window.'; button.disabled = false; }, 3000);
 }
 
-async function loadStats() {
-  const { events } = await send({ type: 'getActivity' });
-  const count = (type) => events.filter((e) => e.type === type).length;
-  $('stLocks').textContent = count('lock');
-  $('stUnlocks').textContent = count('unlock');
-  $('stFailed').textContent = count('failed');
-}
-
 async function init() {
-  loadStats();
   const status = await send({ type: 'getStatus' });
   if (status.reason) $('reason').textContent = status.reason + '.';
   if (status.scope === 'private') $('footText').textContent = 'Only your private windows are locked. Everything else stays open.';
