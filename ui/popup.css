@@ -1,9 +1,9 @@
 body { width: 320px; padding: 16px 14px 10px; display: grid; gap: 12px; align-content: start; }
 header { display: flex; gap: 11px; align-items: center; }
-header img { border-radius: 8px; }
+header .mascot { width: 58px; flex: none; margin: -4px 0 -6px -4px; }
 header strong { font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
 .status { display: flex; align-items: center; gap: 8px; margin-top: 1px; font-size: 13px; color: var(--text-2); }
-.detail { margin: -6px 0 0 43px; }
+.detail { margin: -4px 0 0 0; }
 .detail:empty { display: none; }
 section { display: grid; gap: 10px; }
 section p { font-size: 13.5px; }

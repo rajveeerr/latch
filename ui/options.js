@@ -1,4 +1,5 @@
-import { mountMechanism } from './mechanism.js';
+import { mountKerby } from './kerby.js';
+import { mountScene } from './scene.js';
 import { b64u } from '../src/lib/webauthn.js';
 
 const $ = (id) => document.getElementById(id);
@@ -8,7 +9,9 @@ const NUMBERS = ['autoLockMinutes', 'blurLockMinutes'];
 
 let saved = null;            // settings exactly as the background has them
 let status = null;
-let mechanism = null;
+let kerby = null;            // the overview mascot
+let obKerby = null;          // the onboarding mascot
+let obActive = false;        // first run: the stepped flow is showing
 let pauseMinutes = 15;
 let touchAvailable = false;
 let toastTimer;
@@ -135,12 +138,13 @@ function renderOverview() {
   $('turnOff').textContent = saved.enabled ? 'Turn off' : 'Turn on';
   $('turnOff').hidden = !status.hasPasscode;
   if (!status.hasPasscode || !saved.enabled || status.paused) $('pauseChoice').hidden = true;
-  mechanism.set(Boolean(status.locked), true);
+  kerby.set(!status.hasPasscode || !saved.enabled || status.paused ? 'sleep' : 'guard');
 }
 
 // ---------- first-run checklist ----------
 async function renderSetup() {
-  const { setupHidden } = await chrome.storage.local.get('setupHidden');
+  const { setupHidden, onboarded } = await chrome.storage.local.get(['setupHidden', 'onboarded']);
+  if (onboarded) { $('setupCard').hidden = true; return; }          // onboarding already covered all of this
   const { recoveryAck } = await chrome.storage.local.get('recoveryAck');
   const card = $('setupCard');
   const first = !status.hasPasscode;
@@ -219,7 +223,8 @@ $('lockNow').addEventListener('click', async () => {
     toast(result.error === 'incognito-not-allowed' ? 'Allow Latch in private windows first.' : 'Could not lock.', 'error');
     return;
   }
-  mechanism.set(true, true);
+  kerby.set('happy');
+  setTimeout(() => kerby.set('guard'), 1400);
   if (result.noPrivateWindows) toast('Locked. No private windows are open right now; new ones will be covered.');
 });
 $('allowPrivate').addEventListener('click', () => send({ type: 'openIncognitoSettings' }));
@@ -276,10 +281,10 @@ $('repeatPasscode').addEventListener('input', validatePasscodeForm);
 
 function placePasscodeForm() {
   const form = $('passcodeForm');
-  const target = status.hasPasscode ? $('securityFormSlot') : $('setupFormSlot');
+  const target = obActive ? $('obFormSlot') : status.hasPasscode ? $('securityFormSlot') : $('setupFormSlot');
   if (form.parentElement !== target) target.append(form);
   form.classList.toggle('flat', !status.hasPasscode);
-  form.hidden = status.hasPasscode && $('changePasscode').getAttribute('aria-expanded') !== 'true';
+  form.hidden = !obActive && status.hasPasscode && $('changePasscode').getAttribute('aria-expanded') !== 'true';
   $('currentRow').hidden = !status.hasPasscode;
   $('savePasscode').textContent = status.hasPasscode ? 'Change passcode' : 'Set passcode';
   $('changePasscode').textContent = status.hasPasscode ? 'Change…' : 'Set…';
@@ -318,12 +323,15 @@ for (const button of document.querySelectorAll('.reveal')) {
 
 // ---------- recovery code ----------
 function showRecovery(code) {
+  const sheet = $('recoverySheet');
+  if (obActive) { $('obRecoverySlot').append(sheet); sheet.classList.add('flat'); }
+  else { document.querySelector('.main').prepend(sheet); sheet.classList.remove('flat'); }
   $('recoveryValue').textContent = code;
   $('recoverySaved').checked = false;
   $('recoveryDone').disabled = true;
   $('copyRecovery').querySelector('span').textContent = 'Copy';
   $('recoverySheet').hidden = false;
-  $('content').hidden = true;
+  if (obActive) obGo('recovery'); else $('content').hidden = true;
   $('recoverySaved').focus();
   window.scrollTo({ top: 0 });
 }
@@ -346,6 +354,7 @@ $('recoveryDone').addEventListener('click', async () => {
   $('content').hidden = false;
   $('recoveryValue').textContent = '';
   await load();
+  if (obActive) return obGo('private');
   toast('You are protected. Press Lock now to try it.');
 });
 $('newRecovery').addEventListener('click', () => {
@@ -385,7 +394,7 @@ $('touchSetup').addEventListener('click', () => {
       clientDataJSON: b64u.encode(r.clientDataJSON),
       algorithm: r.getPublicKeyAlgorithm(),
     });
-    if (result.ok) { await load(); toast('Touch ID is set up.'); }
+    if (result.ok) { await load(); toast('Touch ID is set up.'); if (obActive) obGo('mac'); }
     return result;
   });
 });
@@ -473,6 +482,70 @@ const observer = new IntersectionObserver((entries) => {
 }, { rootMargin: '-10% 0px -70% 0px' });
 for (const a of links) { const section = document.getElementById(a.dataset.nav); if (section) observer.observe(section); }
 
+// ---------- first-run onboarding ----------
+const OB_PANES = ['welcome', 'passcode', 'recovery', 'private', 'touch', 'mac'];
+const OB_IDS = { welcome: 'obWelcome', passcode: 'obPasscode', recovery: 'obRecovery', private: 'obPrivate', touch: 'obTouch', mac: 'obMac' };
+const OB_KERBY = { welcome: 'guard', passcode: 'guard', recovery: 'happy', private: 'guard', touch: 'guard', mac: 'happy' };
+let obCurrent = 'welcome';
+
+function obGo(name) {
+  if (name === 'touch' && !touchAvailable) name = 'mac';
+  obCurrent = name;
+  for (const key of OB_PANES) $(OB_IDS[key]).hidden = key !== name;
+  const index = OB_PANES.indexOf(name);
+  $('obDots').innerHTML = OB_PANES.filter((key) => key !== 'touch' || touchAvailable).map((key) => `<li class="${key === name ? 'on' : OB_PANES.indexOf(key) < index ? 'done' : ''}"></li>`).join('');
+  obKerby.set(OB_KERBY[name]);
+  $('obSkip').hidden = !status.hasPasscode || name === 'welcome' || name === 'passcode' || name === 'recovery';
+  if (name === 'passcode') { placePasscodeForm(); $('newPasscode').focus(); }
+  if (name === 'private') renderObPrivate();
+  if (name === 'mac') {
+    const mac = /Mac/.test(navigator.platform);
+    $('obMacTitle').textContent = mac ? 'Lock your Mac too' : 'Lock your computer too';
+    $('obMacText').textContent = mac
+      ? 'Latch covers your browser; macOS covers everything else. Press Control + Command + Q to lock your Mac whenever you step away, and in System Settings turn on “Require password immediately” after sleep or screen saver.'
+      : 'Latch covers your browser; your operating system covers everything else. Lock your computer when you step away (Windows key + L on Windows) and keep a sign-in password on it.';
+  }
+}
+
+function renderObPrivate() {
+  $('obPrivateStatus').textContent = status.incognitoAllowed ? 'Done. Private windows are covered too.' : '';
+  $('obAllow').hidden = status.incognitoAllowed;
+  $('obNextPrivate').textContent = status.incognitoAllowed ? 'Continue' : 'Skip for now';
+  $('obNextPrivate').classList.toggle('primary', status.incognitoAllowed);
+}
+
+async function startOnboarding() {
+  obActive = true;
+  $('shell').hidden = true;
+  $('onboarding').hidden = false;
+  placePasscodeForm();
+  obGo(status.hasPasscode ? 'recovery' : 'welcome');
+}
+
+async function finishOnboarding() {
+  await chrome.storage.local.set({ onboarded: true });
+  obActive = false;
+  $('onboarding').hidden = true;
+  $('shell').hidden = false;
+  await load();
+  kerby.set('happy');
+  setTimeout(() => kerby.set('guard'), 1600);
+  toast('You are protected. Press Lock now to try it.');
+}
+
+$('obStart').addEventListener('click', () => obGo('passcode'));
+$('obNextPrivate').addEventListener('click', () => obGo('touch'));
+$('obNextTouch').addEventListener('click', () => obGo('mac'));
+$('obAllow').addEventListener('click', () => send({ type: 'openIncognitoSettings' }));
+$('obTouchSetup').addEventListener('click', () => $('touchSetup').click());
+$('obFinish').addEventListener('click', finishOnboarding);
+$('obSkip').addEventListener('click', finishOnboarding);
+// Kerby shuts his eyes while a passcode is typed
+for (const id of ['newPasscode', 'repeatPasscode']) {
+  $(id).addEventListener('input', () => { if (obActive) obKerby.set($(id).value ? 'typing' : 'guard'); });
+  $(id).addEventListener('blur', () => { if (obActive && obCurrent === 'passcode') obKerby.set('guard'); });
+}
+
 // ---------- load ----------
 async function load() {
   const [{ settings }, st] = await Promise.all([send({ type: 'getSettings' }), send({ type: 'getStatus' })]);
@@ -494,11 +567,17 @@ async function load() {
 }
 
 (async () => {
-  mechanism = mountMechanism($('heroArt'), false);
+  kerby = mountKerby($('heroArt'), { state: 'guard' });
+  mountScene($('obScene'));
+  obKerby = mountKerby($('obKerby'), { state: 'guard' });
   try { touchAvailable = Boolean(window.PublicKeyCredential) && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable(); } catch { touchAvailable = false; }
   await load();
+  // Someone who set Latch up before onboarding existed has already finished it.
+  const { onboarded, recoveryAck } = await chrome.storage.local.get(['onboarded', 'recoveryAck']);
+  if (!onboarded && status.hasPasscode && recoveryAck) await chrome.storage.local.set({ onboarded: true });
+  else if (!status.hasPasscode) await startOnboarding();
   if (location.hash) document.querySelector(location.hash)?.scrollIntoView();
 })();
 
 // Coming back from the extension settings page: re-check whether private windows are allowed.
-window.addEventListener('focus', () => { if (status) load(); });
+window.addEventListener('focus', async () => { if (status) { await load(); if (obActive && obCurrent === 'private') renderObPrivate(); } });

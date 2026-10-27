@@ -26,26 +26,25 @@
     host.setAttribute('popover', 'manual');   // top layer: above dialogs and full-screen video
     host.style.cssText = [
       'position:fixed', 'inset:0', 'margin:0', 'padding:0', 'border:0', 'width:100vw', 'height:100vh',
-      'max-width:none', 'max-height:none', 'overflow:hidden', 'background:#f4f2ee', 'z-index:2147483647', 'display:block',
+      'max-width:none', 'max-height:none', 'overflow:hidden', 'background:#f6f4ef', 'z-index:2147483647', 'display:block',
     ].map((rule) => rule + ' !important;').join('');
     const root = host.attachShadow({ mode: 'closed' });
     root.innerHTML = `
       <style>
         :host { color-scheme: light dark; }
-        .wrap { position: fixed; inset: 0; display: grid; place-items: center; background: #f4f2ee; color: #1a1917;
+        .wrap { position: fixed; inset: 0; display: grid; place-items: center; background: #f6f4ef; color: #14171f;
                 font: 14px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
         .card { display: grid; gap: 6px; justify-items: center; text-align: center; padding: 0 24px; }
         svg { width: 30px; height: 30px; margin-bottom: 10px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
         b { font-size: 20px; font-weight: 600; letter-spacing: -.015em; }
-        span { color: #66635b; }
+        span { color: #565d6f; }
         button { margin-top: 14px; height: 36px; padding: 0 18px; border: 0; border-radius: 10px; cursor: pointer;
-                 font: 600 13.5px/1 inherit; color: #f7f5f0; background: linear-gradient(180deg, #3a3834, #1a1917);
-                 box-shadow: inset 0 1px 0 rgba(255,255,255,.16), 0 1px 2px rgba(0,0,0,.25); }
-        button:focus-visible { outline: 2px solid #f4f2ee; box-shadow: 0 0 0 4px #2b7a68; }
+                 font: 600 13.5px/1 inherit; color: #fff; background: linear-gradient(180deg, #4569f2, #2142cf);
+                 box-shadow: inset 0 1px 0 rgba(255,255,255,.24), 0 1px 2px rgba(20,40,140,.35); }
+        button:focus-visible { outline: 2px solid #f6f4ef; box-shadow: 0 0 0 4px #2b4fdb; }
         @media (prefers-color-scheme: dark) {
-          .wrap { background: #121211; color: #f1efea; } span { color: #a8a59c; }
-          button { color: #1a1917; background: linear-gradient(180deg, #f7f5f0, #d9d6cd); box-shadow: inset 0 1px 0 rgba(255,255,255,.5), 0 1px 2px rgba(0,0,0,.4); }
-          button:focus-visible { outline-color: #121211; box-shadow: 0 0 0 4px #5cbfa6; }
+          .wrap { background: #0b0e16; color: #eef1f8; } span { color: #9aa3ba; }
+          button:focus-visible { outline-color: #0b0e16; box-shadow: 0 0 0 4px #7c98ff; }
         }
       </style>
       <div class="wrap" role="dialog" aria-modal="true" aria-label="This window is locked"><div class="card">
