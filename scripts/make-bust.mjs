@@ -1,4 +1,4 @@
-// Builds ui/art/bust.svg: a modern marble bust in profile. Hand-built vector shapes, no raster, no filters
+// Builds docs/art/bust.svg: a modern marble bust in profile. Hand-built vector shapes, no raster, no filters
 // beyond soft blur for shading. The hair is carved snail-shell curls (a spiral inside each), as on classical statues.
 import { writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -155,5 +155,5 @@ const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 600" width
   </g>
 </svg>
 `;
-writeFileSync(path.join(root, 'ui/art/bust.svg'), svg);
+writeFileSync(path.join(root, 'docs/art/bust.svg'), svg);
 console.log('bust written,', curls.length + fringeCurls.length, 'curls');
