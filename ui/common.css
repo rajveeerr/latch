@@ -1,26 +1,159 @@
+/* Latch design system: "marble and ink".
+   Warm stone neutrals, near-black ink, one patina accent. Quiet by default: soft shadows,
+   hairlines, no glass or glow. Follows the system's light or dark appearance. */
+
 :root {
-  --bg: #0c0e13; --panel: #151821; --line: #262a36; --text: #e9ebf1; --muted: #98a0b3;
-  --accent: #fb542b; --accent-2: #ff7a45; --danger: #ff6b6b; --ok: #4ade80;
-  color-scheme: dark;
+  color-scheme: light;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --bg: #f4f2ee;
+  --surface: #ffffff;
+  --surface-2: #faf9f6;
+  --line: rgba(26, 25, 23, .10);
+  --line-strong: rgba(26, 25, 23, .22);
+  --text: #1a1917;
+  --text-2: #66635b;                       /* 5.4:1 on the surface */
+  --ink: #1a1917;
+  --patina: #2b7a68;                       /* state and focus; 5.2:1 against white */
+  --patina-soft: rgba(43, 122, 104, .12);
+  --warn: #946200; --danger: #b3372b;
+  --shadow: 0 1px 2px rgba(26, 25, 23, .05), 0 8px 24px rgba(26, 25, 23, .05);
+
+  --btn-ink-a: #3a3834; --btn-ink-b: #1a1917; --btn-ink-text: #f7f5f0;
+  --switch-off: rgba(26, 25, 23, .52);     /* above 3:1 against the surface */
+  --switch-on: #2b7a68;
+  --seg-bg: rgba(26, 25, 23, .06);
+
+  --r-panel: 14px; --r-ctl: 10px;
+  --ease: cubic-bezier(.16, 1, .3, 1);
 }
-@media (prefers-color-scheme: light) {
-  :root { --bg: #f5f6f9; --panel: #fff; --line: #dfe2ea; --text: #161922; --muted: #5d657a; color-scheme: light; }
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #121211;
+    --surface: #1b1b19;
+    --surface-2: #222220;
+    --line: rgba(255, 255, 255, .09);
+    --line-strong: rgba(255, 255, 255, .24);
+    --text: #f1efea;
+    --text-2: #a8a59c;
+    --ink: #f1efea;
+    --patina: #5cbfa6;
+    --patina-soft: rgba(92, 191, 166, .16);
+    --warn: #e2a63a; --danger: #ff8a7e;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 10px 30px rgba(0, 0, 0, .35);
+    --btn-ink-a: #f7f5f0; --btn-ink-b: #d9d6cd; --btn-ink-text: #1a1917;
+    --switch-off: rgba(255, 255, 255, .46);
+    --switch-on: #2f8f78;                    /* the white thumb stays distinct from the track */
+    --seg-bg: rgba(255, 255, 255, .08);
+  }
 }
+
 * { box-sizing: border-box; }
-[hidden] { display: none !important; }   /* so display rules below never un-hide hidden elements */
-input[type=checkbox] { accent-color: var(--accent); }
-body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
-button, input, select { font: inherit; }
-button { cursor: pointer; border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 9px; padding: 8px 14px; }
-button:hover { border-color: var(--muted); }
-button.primary { background: linear-gradient(180deg, var(--accent-2), var(--accent)); border-color: transparent; color: #fff; font-weight: 600; }
-button.primary:hover { filter: brightness(1.06); }
-button:disabled { opacity: .5; cursor: default; }
-input[type=password], input[type=number], input[type=text], select {
-  width: 100%; padding: 9px 12px; border-radius: 9px; border: 1px solid var(--line); background: var(--bg); color: var(--text);
+[hidden] { display: none !important; }      /* display rules below must never un-hide hidden elements */
+
+html { background: var(--bg); }
+body {
+  margin: 0; min-height: 100vh; color: var(--text); background: var(--bg);
+  font: 400 14px/1.5 var(--font); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+  font-variant-numeric: tabular-nums;
 }
-input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.muted { color: var(--muted); }
-.error { color: var(--danger); min-height: 1.4em; }
-.ok { color: var(--ok); }
-.logo { width: 64px; height: 64px; }
+::selection { background: var(--patina-soft); }
+input { caret-color: var(--patina); }
+* { scrollbar-color: color-mix(in srgb, var(--text) 25%, transparent) transparent; }
+
+h1, h2, h3, p { margin: 0; }
+h1 { font-size: 28px; line-height: 1.15; font-weight: 600; letter-spacing: -.02em; }
+h2 { font-size: 17px; line-height: 1.3; font-weight: 600; letter-spacing: -.01em; }
+h3 { font-size: 14px; font-weight: 600; }
+.muted { color: var(--text-2); }
+.small { font-size: 12.5px; line-height: 1.45; }
+a { color: var(--text); text-underline-offset: 3px; }
+code {
+  font: 12.5px var(--mono); padding: 1px 6px; border-radius: 6px; background: var(--seg-bg);
+}
+kbd {
+  font: 500 11.5px/1 var(--font); padding: 3px 6px; border-radius: 6px; background: var(--seg-bg); color: inherit;
+  box-shadow: inset 0 -1px 0 var(--line);
+}
+
+/* ---------- icons ---------- */
+svg.i { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---------- buttons ---------- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 34px; padding: 0 14px;
+  font: 500 13.5px/1 var(--font); color: var(--text); background: var(--surface); border: 0; border-radius: var(--r-ctl);
+  box-shadow: inset 0 0 0 1px var(--line-strong), 0 1px 1px rgba(26, 25, 23, .04); cursor: pointer;
+  transition: background-color .15s, transform .15s var(--ease), box-shadow .15s;
+}
+.btn:hover { background: var(--surface-2); }
+.btn:active { transform: scale(.985); }
+.btn.primary {
+  color: var(--btn-ink-text); font-weight: 600;
+  background-color: var(--btn-ink-b); background-image: linear-gradient(180deg, var(--btn-ink-a), var(--btn-ink-b));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .16), 0 1px 2px rgba(0, 0, 0, .25);
+}
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.quiet { background: transparent; box-shadow: none; color: var(--text-2); }
+.btn.quiet:hover { background: var(--seg-bg); color: var(--text); }
+.btn.danger { color: var(--danger); }
+.btn.wide { width: 100%; height: 40px; font-size: 14.5px; }
+.btn:disabled { opacity: .45; cursor: default; transform: none; filter: none; }
+.btn kbd { background: rgba(255, 255, 255, .16); box-shadow: none; color: inherit; }
+@media (prefers-color-scheme: dark) { .btn.primary kbd { background: rgba(0, 0, 0, .12); } }
+:focus-visible { outline: 2px solid var(--surface); outline-offset: 0; box-shadow: 0 0 0 4px var(--patina); }
+.btn:focus-visible, .input:focus-visible { outline: 2px solid var(--surface); box-shadow: 0 0 0 4px var(--patina); }
+
+/* ---------- inputs ---------- */
+.input {
+  width: 100%; height: 38px; padding: 0 12px; font: 14.5px var(--font); color: var(--text); background: var(--surface);
+  border: 0; border-radius: var(--r-ctl); box-shadow: inset 0 0 0 1px var(--line-strong);
+  transition: box-shadow .15s;
+}
+.input::placeholder { color: var(--text-2); }
+.input:focus { outline: none; box-shadow: inset 0 0 0 1.5px var(--patina), 0 0 0 4px var(--patina-soft); }
+.input[aria-invalid="true"] { box-shadow: inset 0 0 0 1.5px var(--danger); }
+.pw { position: relative; display: block; }
+.pw .input { padding-right: 42px; }
+.pw .reveal {
+  position: absolute; right: 3px; top: 3px; width: 32px; height: 32px; display: grid; place-items: center;
+  background: none; border: 0; border-radius: 8px; color: var(--text-2); cursor: pointer;
+}
+.pw .reveal:hover { color: var(--text); background: var(--seg-bg); }
+
+/* ---------- switch ---------- */
+input.switch {
+  appearance: none; -webkit-appearance: none; flex: none; position: relative; width: 44px; height: 26px; margin: 0;
+  border-radius: 13px; background: var(--switch-off); cursor: pointer; transition: background-color .2s;
+}
+input.switch::before {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; border-radius: 50%; background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .3); transition: transform .22s var(--ease);
+}
+input.switch:checked { background: var(--switch-on); }
+input.switch:checked::before { transform: translateX(18px); }
+
+/* ---------- segmented control ---------- */
+.seg { display: inline-flex; flex-wrap: wrap; padding: 3px; gap: 2px; border-radius: 11px; background: var(--seg-bg); }
+.seg button {
+  height: 28px; padding: 0 12px; border: 0; border-radius: 8px; background: none; color: var(--text-2);
+  font: 500 13px/1 var(--font); white-space: nowrap; cursor: pointer; transition: background-color .15s, color .15s;
+}
+.seg button:hover { color: var(--text); }
+.seg button[aria-pressed="true"], .seg button[aria-checked="true"] {
+  color: var(--text); background: var(--surface); box-shadow: 0 1px 2px rgba(0, 0, 0, .14), inset 0 0 0 1px var(--line);
+}
+
+/* ---------- panels and rows ---------- */
+.card { background: var(--surface); border-radius: var(--r-panel); box-shadow: inset 0 0 0 1px var(--line), var(--shadow); }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--text-2); flex: none; }
+.dot.ok { background: var(--patina); box-shadow: 0 0 0 3px var(--patina-soft); }
+.dot.warn { background: var(--warn); box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 18%, transparent); }
+
+/* Reduced motion means no motion: not even a near-instant transition, which still holds the old colour for a frame. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}

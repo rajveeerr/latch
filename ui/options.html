@@ -2,65 +2,196 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Latch settings</title>
   <link rel="stylesheet" href="common.css">
   <link rel="stylesheet" href="options.css">
 </head>
 <body>
-  <div class="page">
-    <header>
-      <img src="../icons/icon-128.png" alt="" width="48" height="48">
-      <div><h1>Latch</h1><p class="muted">Lock this browser profile behind a passcode.</p></div>
-    </header>
+  <div class="shell">
+    <aside class="nav">
+      <div class="brand"><img src="../icons/icon-48.png" alt="" width="30" height="30"><strong>Latch</strong></div>
+      <nav aria-label="Settings sections">
+        <a href="#overview" data-nav="overview"><svg class="i"><use href="icons.svg#grid"/></svg> Overview</a>
+        <a href="#protect" data-nav="protect"><svg class="i"><use href="icons.svg#shield-check"/></svg> What to protect</a>
+        <a href="#when" data-nav="when"><svg class="i"><use href="icons.svg#clock"/></svg> When to lock</a>
+        <a href="#while" data-nav="while"><svg class="i"><use href="icons.svg#layers"/></svg> While locked</a>
+        <a href="#security" data-nav="security"><svg class="i"><use href="icons.svg#key"/></svg> Passcode and recovery</a>
+        <a href="#activity" data-nav="activity"><svg class="i"><use href="icons.svg#activity"/></svg> Activity</a>
+        <a href="#help" data-nav="help"><svg class="i"><use href="icons.svg#info"/></svg> Help</a>
+      </nav>
+    </aside>
 
-    <section id="passcodeCard">
-      <h2>Passcode</h2>
-      <p class="muted" id="passcodeHelp">Choose a passcode. Longer is safer; a short numeric code can be guessed offline by someone who copies your profile folder.</p>
-      <div class="grid">
-        <label id="currentRow" hidden>Current passcode<input id="currentPasscode" type="password" autocomplete="off"></label>
-        <label>New passcode<input id="newPasscode" type="password" autocomplete="new-password"></label>
-        <label>Repeat it<input id="repeatPasscode" type="password" autocomplete="new-password"></label>
+    <main class="main">
+      <!-- recovery code, shown right after a passcode is created or a new code is made -->
+      <section class="card sheet" id="recoverySheet" hidden aria-labelledby="sheetTitle">
+        <h2 id="sheetTitle">Save your recovery code</h2>
+        <p class="muted">If you forget your passcode, this code is the only way back in without removing Latch. It is shown once. Keep it somewhere safe, away from this computer.</p>
+        <div class="code" id="recoveryValue"></div>
+        <div class="actions">
+          <button class="btn" id="copyRecovery" type="button"><svg class="i"><use href="icons.svg#copy"/></svg> <span>Copy</span></button>
+          <button class="btn" id="downloadRecovery" type="button"><svg class="i"><use href="icons.svg#download"/></svg> Download</button>
+        </div>
+        <label class="check"><input type="checkbox" id="recoverySaved"> I have saved my recovery code</label>
+        <button class="btn primary" id="recoveryDone" type="button" disabled>Continue</button>
+      </section>
+
+      <div id="content">
+        <section id="overview" class="card hero" aria-labelledby="statusTitle">
+          <div class="heroText">
+            <h1 id="statusTitle"><span class="dot" id="statusDot"></span><span id="statusText">Latch</span></h1>
+            <p class="muted" id="statusSummary"></p>
+            <div class="actions" id="heroActions">
+              <button class="btn primary" id="lockNow" type="button"><svg class="i"><use href="icons.svg#lock"/></svg> Lock now <kbd class="shortcut">⌃⇧L</kbd></button>
+              <button class="btn" id="pauseOpen" type="button">Pause…</button>
+              <button class="btn" id="resumeNow" type="button" hidden>Resume</button>
+              <button class="btn" id="allowPrivate" type="button" hidden>Allow in private windows</button>
+              <button class="btn quiet" id="turnOff" type="button">Turn off</button>
+            </div>
+            <div class="pauseChoice" id="pauseChoice" hidden>
+              <div class="seg" role="group" aria-label="Pause for">
+                <button type="button" data-min="15" aria-pressed="true">15 min</button>
+                <button type="button" data-min="60" aria-pressed="false">1 hour</button>
+                <button type="button" data-min="240" aria-pressed="false">4 hours</button>
+                <button type="button" data-min="0" aria-pressed="false">Until I resume</button>
+              </div>
+              <button class="btn" id="pauseGo" type="button">Pause</button>
+            </div>
+          </div>
+          <div class="heroArt" id="heroArt" aria-hidden="true"></div>
+        </section>
+
+        <section class="card setup" id="setupCard" hidden aria-labelledby="setupTitle">
+          <div class="setupHead"><h2 id="setupTitle">Getting set up</h2><button class="btn quiet" id="setupHide" type="button">Hide</button></div>
+          <p class="muted" id="setupIntro" hidden>Choose a passcode to start. You will get a recovery code next, in case you ever forget it.</p>
+          <div id="setupFormSlot"></div>
+          <ol class="steps" id="steps"></ol>
+        </section>
+
+        <!-- everything below waits until a passcode exists -->
+        <div id="settingsBody">
+          <section id="protect" class="group" aria-labelledby="protectTitle">
+            <h2 id="protectTitle">What to protect</h2>
+            <div class="choices" role="radiogroup" aria-label="What to protect">
+              <label class="choice"><input type="radio" name="scope" value="profile" id="scopeProfile">
+                <span class="choiceBody"><svg class="i"><use href="icons.svg#globe"/></svg><span><b>Everything in this profile</b><span class="muted small block">Every window and tab is covered and hidden when locked.</span></span></span></label>
+              <label class="choice"><input type="radio" name="scope" value="private" id="scopePrivate">
+                <span class="choiceBody"><svg class="i"><use href="icons.svg#mask"/></svg><span><b>Private windows only</b><span class="muted small block">Like Safari: private windows lock when you step away. Your other windows stay open.</span></span></span></label>
+            </div>
+            <div class="card list">
+              <div class="row" id="incognitoRow">
+                <span class="rowIcon"><svg class="i"><use href="icons.svg#mask"/></svg></span>
+                <span class="grow"><span class="title" id="incognitoTitle">Private windows</span><span class="muted small block" id="incognitoHelp"></span></span>
+                <button class="btn" id="incognitoOpen" type="button">Allow in private windows</button>
+              </div>
+            </div>
+          </section>
+
+          <section id="when" class="group" aria-labelledby="whenTitle">
+            <h2 id="whenTitle">When to lock</h2>
+            <div class="card list">
+              <div class="row stack">
+                <div class="rowHead"><span class="rowIcon"><svg class="i"><use href="icons.svg#clock"/></svg></span>
+                  <div><label for="autoLockMinutes" class="title">After inactivity</label><p class="muted small">Locks when you have not used the keyboard or mouse for this long.</p></div></div>
+                <div class="rowCtl">
+                  <div class="seg chips" data-for="autoLockMinutes" role="group" aria-label="Inactivity presets">
+                    <button type="button" data-v="0">Off</button><button type="button" data-v="1">1 min</button><button type="button" data-v="5">5 min</button><button type="button" data-v="15">15 min</button><button type="button" data-v="30">30 min</button><button type="button" data-v="60">1 hr</button>
+                  </div>
+                  <span class="custom"><input class="input num" id="autoLockMinutes" type="number" placeholder="Custom" min="0" max="1440" step="0.5" aria-label="Minutes of inactivity, 0 for never"> <span class="muted small">min</span></span>
+                </div>
+              </div>
+              <div class="row stack">
+                <div class="rowHead"><span class="rowIcon"><svg class="i"><use href="icons.svg#moon"/></svg></span>
+                  <div><label for="blurLockMinutes" class="title">When the browser is in the background</label><p class="muted small">Locks after you have been in another app for this long.</p></div></div>
+                <div class="rowCtl">
+                  <div class="seg chips" data-cols="2" data-for="blurLockMinutes" role="group" aria-label="Background presets">
+                    <button type="button" data-v="0">Off</button><button type="button" data-v="5">5 min</button><button type="button" data-v="15">15 min</button><button type="button" data-v="30">30 min</button>
+                  </div>
+                  <span class="custom"><input class="input num" id="blurLockMinutes" type="number" placeholder="Custom" min="0" max="1440" step="0.5" aria-label="Minutes in the background, 0 for never"> <span class="muted small">min</span></span>
+                </div>
+              </div>
+              <label class="row"><span class="rowIcon"><svg class="i"><use href="icons.svg#power"/></svg></span><span class="grow"><span class="title">When the browser starts</span><span class="muted small block">Begin every session locked.</span></span><input class="switch" role="switch" type="checkbox" id="lockOnStartup"></label>
+              <label class="row"><span class="rowIcon"><svg class="i"><use href="icons.svg#display"/></svg></span><span class="grow"><span class="title">When the screen locks or the Mac sleeps</span><span class="muted small block">Locks the moment you walk away.</span></span><input class="switch" role="switch" type="checkbox" id="lockOnSystemLock"></label>
+              <label class="row"><span class="rowIcon"><svg class="i"><use href="icons.svg#speaker-off"/></svg></span><span class="grow"><span class="title">Stay unlocked while a tab plays sound</span><span class="muted small block">Inactivity will not lock while you are watching or listening.</span></span><input class="switch" role="switch" type="checkbox" id="skipWhileAudio"></label>
+            </div>
+          </section>
+
+          <section id="while" class="group" aria-labelledby="whileTitle">
+            <h2 id="whileTitle">While locked</h2>
+            <div class="card list">
+              <label class="row"><span class="rowIcon"><svg class="i"><use href="icons.svg#layers"/></svg></span><span class="grow"><span class="title">Cover every page</span><span class="muted small block">An opaque lock screen over each page, above dialogs and full-screen video.</span></span><input class="switch" role="switch" type="checkbox" id="coverPages"></label>
+              <label class="row"><span class="rowIcon"><svg class="i"><use href="icons.svg#window"/></svg></span><span class="grow"><span class="title">Minimize windows</span><span class="muted small block">Brought back as they were when you unlock. Needs the browser to allow minimizing.</span></span><input class="switch" role="switch" type="checkbox" id="minimizeWindows"></label>
+              <label class="row"><span class="rowIcon"><svg class="i"><use href="icons.svg#pause"/></svg></span><span class="grow"><span class="title">Pause video and audio</span><span class="muted small block">Stops anything playing on the covered pages.</span></span><input class="switch" role="switch" type="checkbox" id="pauseMedia"></label>
+              <label class="row"><span class="rowIcon"><svg class="i"><use href="icons.svg#speaker-off"/></svg></span><span class="grow"><span class="title">Mute tabs that make sound</span><span class="muted small block">Unmuted when you unlock.</span></span><input class="switch" role="switch" type="checkbox" id="muteTabs"></label>
+            </div>
+            <p class="reassure small muted"><svg class="i"><use href="icons.svg#shield-check"/></svg> Latch never closes, reloads or edits your tabs, tab groups or windows.</p>
+          </section>
+
+          <section id="security" class="group" aria-labelledby="securityTitle">
+            <h2 id="securityTitle">Passcode and recovery</h2>
+            <div class="card list">
+              <div class="row">
+                <span class="rowIcon"><svg class="i"><use href="icons.svg#lock"/></svg></span>
+                <span class="grow"><span class="title">Passcode</span><span class="muted small block">A longer phrase is safer than a short code.</span></span>
+                <button class="btn" id="changePasscode" type="button" aria-expanded="false" aria-controls="passcodeForm">Change…</button>
+              </div>
+              <div class="row">
+                <span class="rowIcon"><svg class="i"><use href="icons.svg#key"/></svg></span>
+                <span class="grow"><span class="title">Recovery code</span><span class="muted small block" id="recoveryHelp">Lets you set a new passcode if you forget it.</span></span>
+                <button class="btn" id="newRecovery" type="button">Create a new code…</button>
+              </div>
+              <div class="row">
+                <span class="rowIcon"><svg class="i"><use href="icons.svg#fingerprint"/></svg></span>
+                <span class="grow"><span class="title">Touch ID <span class="beta">Beta</span></span><span class="muted small block" id="touchHelp">Unlock with Touch ID or your device passkey.</span></span>
+                <button class="btn" id="touchSetup" type="button">Set up…</button>
+                <button class="btn quiet" id="touchRemove" type="button" hidden>Remove</button>
+              </div>
+            </div>
+
+            <div id="securityFormSlot"></div>
+            <form class="card pad" id="passcodeForm" autocomplete="off" hidden>
+              <div class="field" id="currentRow" hidden><label for="currentPasscode">Current passcode</label>
+                <span class="pw"><input class="input" id="currentPasscode" type="password" autocomplete="current-password"><button type="button" class="reveal" aria-label="Show current passcode"><svg class="i"><use href="icons.svg#eye"/></svg></button></span></div>
+              <div class="field"><label for="newPasscode">New passcode</label>
+                <span class="pw"><input class="input" id="newPasscode" type="password" autocomplete="new-password" aria-describedby="strength"><button type="button" class="reveal" aria-label="Show new passcode"><svg class="i"><use href="icons.svg#eye"/></svg></button></span></div>
+              <div class="meter" aria-hidden="true"><i></i><i></i><i></i></div>
+              <p class="small muted" id="strength">At least 4 characters.</p>
+              <div class="field"><label for="repeatPasscode">Repeat it</label>
+                <span class="pw"><input class="input" id="repeatPasscode" type="password" autocomplete="new-password" aria-describedby="passcodeMsg"><button type="button" class="reveal" aria-label="Show repeated passcode"><svg class="i"><use href="icons.svg#eye"/></svg></button></span></div>
+              <div class="actions"><button class="btn primary" id="savePasscode" type="submit" disabled>Set passcode</button><span id="passcodeMsg" role="status"></span></div>
+            </form>
+          </section>
+
+          <section id="activity" class="group" aria-labelledby="activityTitle">
+            <div class="groupHead"><h2 id="activityTitle">Activity</h2><button class="btn quiet" id="clearActivity" type="button">Clear…</button></div>
+            <div class="card list" id="activityList"></div>
+            <p class="muted small">Kept on this computer only. Clearing it needs your passcode.</p>
+          </section>
+        </div>
       </div>
-      <div class="actions"><button class="primary" id="savePasscode">Set passcode</button><span id="passcodeMsg" role="status"></span></div>
-    </section>
 
-    <section>
-      <h2>When to lock</h2>
-      <label class="field">Lock after inactivity (minutes, 0 = never)
-        <div class="withChips">
-          <input id="autoLockMinutes" type="number" min="0" max="1440" step="0.5">
-          <span class="chips" data-for="autoLockMinutes"><button type="button" data-v="1">1</button><button type="button" data-v="5">5</button><button type="button" data-v="15">15</button><button type="button" data-v="30">30</button><button type="button" data-v="60">60</button><button type="button" data-v="0">Never</button></span>
+      <section id="help" class="group" aria-labelledby="helpTitle">
+        <h2 id="helpTitle">Help</h2>
+        <div class="card pad helpBody">
+          <p><b>Lock from the keyboard.</b> <kbd class="shortcut">⌃⇧L</kbd> locks this profile. <button type="button" class="btn quiet" id="shortcutsOpen">Change the shortcut</button></p>
+          <p><b>Forgot your passcode?</b> On the lock screen choose <i>Forgot passcode</i> and enter your recovery code. Without it, remove Latch at <code><span class="scheme">chrome</span>://extensions</code> and add it again. Your tabs are untouched.</p>
+          <p><b>Something stuck?</b> Turn Latch off in <code><span class="scheme">chrome</span>://extensions</code>. Covers disappear at once. If a tab is still muted or a window minimized, unmute it or restore it from the Dock.</p>
+          <p><b>Private.</b> No network, no accounts, no analytics. Everything stays in this browser. <span class="muted">Version <span id="version"></span>.</span></p>
         </div>
-      </label>
-      <label class="field">Lock after the browser has been in the background (minutes, 0 = never)
-        <div class="withChips">
-          <input id="blurLockMinutes" type="number" min="0" max="1440" step="0.5">
-          <span class="chips" data-for="blurLockMinutes"><button type="button" data-v="5">5</button><button type="button" data-v="15">15</button><button type="button" data-v="30">30</button><button type="button" data-v="0">Never</button></span>
-        </div>
-      </label>
-      <label class="check"><input type="checkbox" id="skipWhileAudio"> Do not lock on inactivity while a tab is playing sound</label>
-      <label class="check"><input type="checkbox" id="lockOnStartup"> Lock when the browser starts</label>
-      <label class="check"><input type="checkbox" id="lockOnSystemLock"> Lock when the screen locks or the Mac sleeps</label>
-    </section>
-
-    <section>
-      <h2>What locking does</h2>
-      <label class="check"><input type="checkbox" id="minimizeWindows"> Minimize this profile's windows (restored when you unlock)</label>
-      <label class="check"><input type="checkbox" id="coverPages"> Cover every page with a lock screen</label>
-      <label class="check"><input type="checkbox" id="pauseMedia"> Pause video and audio on every page</label>
-      <label class="check"><input type="checkbox" id="muteTabs"> Mute tabs that are playing sound (unmuted when you unlock)</label>
-      <p class="muted small">Latch never closes, reloads or edits your tabs, tab groups or windows.</p>
-    </section>
-
-    <section>
-      <h2>Protection</h2>
-      <label class="check"><input type="checkbox" id="enabled"> Latch is turned on</label>
-      <label class="field" id="authRow" hidden>Passcode (needed to loosen settings or turn Latch off)
-        <input id="authPasscode" type="password" autocomplete="off"></label>
-      <div class="actions"><button class="primary" id="save">Save settings</button><span id="saveMsg" role="status"></span></div>
-      <p class="muted small">Change the shortcut at <code>brave://extensions/shortcuts</code> (default: Control+Shift+L). To remove Latch entirely, use <code>brave://extensions</code>; your tabs are untouched either way.</p>
-    </section>
+      </section>
+    </main>
   </div>
+
+  <form class="confirm card" id="authRow" hidden autocomplete="off">
+    <svg class="i"><use href="icons.svg#lock"/></svg>
+    <label for="authPasscode" id="authLabel">Enter your passcode to apply this change</label>
+    <span class="pw"><input class="input" id="authPasscode" type="password" autocomplete="off"><button type="button" class="reveal" aria-label="Show passcode"><svg class="i"><use href="icons.svg#eye"/></svg></button></span>
+    <button class="btn primary" id="save" type="submit">Apply</button>
+    <button class="btn" id="cancelChange" type="button">Cancel</button>
+    <p class="authError" id="authError" role="alert"></p>
+  </form>
+
+  <div class="toast" id="saveMsg" role="status" aria-live="polite"></div>
   <script type="module" src="options.js"></script>
 </body>
 </html>

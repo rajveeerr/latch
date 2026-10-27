@@ -1,7 +1,50 @@
-body { min-height: 100vh; display: grid; place-items: center; background: radial-gradient(circle at 50% 30%, #1a1d28, var(--bg) 60%); }
-main { width: min(340px, 90vw); text-align: center; }
-h1 { margin: 16px 0 4px; font-size: 26px; font-weight: 650; }
-form { display: grid; gap: 10px; margin-top: 20px; }
-.shake { animation: shake .3s; }
-@keyframes shake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
-@media (prefers-reduced-motion: reduce) { .shake { animation: none; } }
+body { min-height: 100vh; }
+.stage { min-height: 100vh; display: grid; grid-template-columns: minmax(360px, 1fr) minmax(0, 1fr); gap: 0; }
+
+.side { display: flex; flex-direction: column; padding: 28px 40px 28px; min-height: 100vh; }
+.brand { display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: 14px; letter-spacing: -.005em; }
+.brand img { border-radius: 6px; }
+.content { margin: auto 0; width: min(380px, 100%); align-self: center; padding: 24px 0; display: grid; gap: 14px; }
+
+.clock { margin-bottom: 10px; }
+.clock time { display: block; font-size: 64px; line-height: 1; font-weight: 300; letter-spacing: -.035em; }
+.clock .ampm { font-size: 20px; font-weight: 400; letter-spacing: 0; margin-left: 8px; color: var(--text-2); }
+.clock p { margin-top: 8px; font-size: 15px; color: var(--text-2); }
+
+h1 { font-size: 22px; letter-spacing: -.015em; }
+#reason { margin-top: 4px; font-size: 14px; }
+form { display: grid; gap: 10px; margin-top: 16px; }
+label { display: grid; gap: 6px; font-size: 13px; font-weight: 500; }
+.mono { font-family: var(--mono); letter-spacing: .02em; }
+.note { margin-top: 4px; font-size: 12.5px; color: var(--warn); }
+.error { margin-top: 2px; font-size: 13px; color: var(--danger); }
+.error:empty, .wait:empty { display: none; }
+.alts { display: flex; gap: 6px; margin: 4px 0 0 -14px; flex-wrap: wrap; }
+.foot { display: flex; align-items: center; gap: 7px; }
+.foot svg.i { width: 15px; height: 15px; }
+
+.code { font: 500 17px/1.4 var(--mono); letter-spacing: .04em; padding: 14px 16px; border-radius: var(--r-ctl); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-strong); word-break: break-all; margin-top: 4px; }
+.check { display: flex; align-items: center; gap: 9px; font-weight: 400; }
+.check input { width: 16px; height: 16px; accent-color: var(--patina); }
+.row { display: flex; gap: 8px; }
+
+/* the marble bust on a plinth of stone */
+.art {
+  position: relative; margin: 14px 14px 14px 0; border-radius: 26px; overflow: hidden; display: grid; place-items: end center;
+  background: radial-gradient(70% 55% at 50% 38%, var(--art-glow), transparent 72%), var(--art-bg);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.art img { width: min(88%, 560px); height: auto; max-height: 92%; margin-bottom: 4%; filter: drop-shadow(0 24px 36px rgba(26, 25, 23, .14)); animation: settle .7s var(--ease) both; }
+:root { --art-bg: #e9e5dc; --art-glow: rgba(255, 255, 255, .85); }
+@media (prefers-color-scheme: dark) { :root { --art-bg: #1c1b19; --art-glow: rgba(255, 255, 255, .07); } .art img { filter: drop-shadow(0 24px 36px rgba(0, 0, 0, .5)); } }
+
+.shake { animation: shake .32s var(--ease); }
+@keyframes settle { from { opacity: 0; transform: translateY(12px); } }
+@keyframes shake { 20% { transform: translateX(-6px); } 45% { transform: translateX(5px); } 70% { transform: translateX(-3px); } }
+
+@media (max-width: 860px) {
+  .stage { grid-template-columns: 1fr; }
+  .art { display: none; }
+  .side { padding: 22px 22px 24px; }
+}
+@media (max-height: 560px) { .clock time { font-size: 44px; } }

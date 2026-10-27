@@ -2,35 +2,58 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Latch</title>
   <link rel="stylesheet" href="common.css">
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
   <header>
-    <img src="../icons/icon-48.png" alt="" width="28" height="28">
-    <div><strong>Latch</strong><div class="muted" id="status">Loading…</div></div>
-  </header>
-  <div id="setup" hidden>
-    <p>Set a passcode to start protecting this profile.</p>
-    <button class="primary" id="openSetup">Set passcode</button>
-  </div>
-  <div id="main" hidden>
-    <button class="primary" id="lock">Lock now</button>
-    <div class="row">
-      <select id="pauseFor" aria-label="Pause for">
-        <option value="15">Pause 15 minutes</option>
-        <option value="60">Pause 1 hour</option>
-        <option value="240">Pause 4 hours</option>
-        <option value="0">Pause until resumed</option>
-      </select>
-      <button id="pause">Pause</button>
+    <img src="../icons/icon-48.png" alt="" width="32" height="32">
+    <div>
+      <strong>Latch</strong>
+      <p class="status"><span class="dot" id="dot"></span><span id="status">Loading…</span></p>
     </div>
-    <input id="passcode" type="password" placeholder="Passcode (needed to pause)" aria-label="Passcode" hidden>
-    <button id="resume" hidden>Resume protection</button>
+  </header>
+  <p class="detail muted small" id="detail"></p>
+
+  <button class="notice" id="notice" hidden><svg class="i"><use href="icons.svg#info"/></svg><span id="noticeText"></span></button>
+
+  <section id="setup" hidden>
+    <p>Choose a passcode to start protecting this profile. It takes about a minute.</p>
+    <button class="btn primary wide" id="openSetup">Set up Latch</button>
+  </section>
+
+  <section id="main" hidden>
+    <div class="paused" id="resumeBar" hidden>
+      <svg class="i"><use href="icons.svg#pause"/></svg>
+      <span id="pausedText">Paused</span>
+      <button class="btn" id="resume">Resume</button>
+    </div>
+
+    <button class="btn primary wide" id="lock"><svg class="i"><use href="icons.svg#lock"/></svg> Lock now <kbd id="shortcut">⌃⇧L</kbd></button>
+    <button class="btn wide" id="unlockPrivate" hidden><svg class="i"><use href="icons.svg#unlock"/></svg> Unlock private windows</button>
+
+    <button class="btn quiet row" id="pauseToggle" aria-expanded="false" aria-controls="pausePanel">
+      <svg class="i"><use href="icons.svg#pause"/></svg> Pause protection…
+    </button>
+    <form class="pausePanel" id="pausePanel" hidden autocomplete="off">
+      <div class="seg" role="group" aria-label="Pause for">
+        <button type="button" data-min="15" aria-pressed="true">15 min</button>
+        <button type="button" data-min="60" aria-pressed="false">1 hour</button>
+        <button type="button" data-min="240" aria-pressed="false">4 hours</button>
+        <button type="button" data-min="0" aria-pressed="false">Until I resume</button>
+      </div>
+      <input class="input" id="passcode" type="password" placeholder="Passcode" aria-label="Passcode to pause">
+      <button class="btn wide" id="pause" type="submit">Pause</button>
+    </form>
     <p class="error" id="error" role="alert"></p>
-    <button id="settings" class="link">Settings</button>
-  </div>
+    <p class="info muted small" id="info" role="status"></p>
+  </section>
+
+  <footer>
+    <button class="btn quiet row" id="settings"><svg class="i"><use href="icons.svg#sliders"/></svg> Settings</button>
+  </footer>
   <script type="module" src="popup.js"></script>
 </body>
 </html>

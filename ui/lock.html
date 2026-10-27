@@ -2,20 +2,68 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Locked – Latch</title>
   <link rel="stylesheet" href="common.css">
   <link rel="stylesheet" href="lock.css">
 </head>
 <body>
-  <main>
-    <img class="logo" src="../icons/icon-128.png" alt="">
-    <h1>Locked</h1>
-    <p class="muted" id="reason"></p>
-    <form id="form" autocomplete="off">
-      <input id="passcode" type="password" placeholder="Passcode" aria-label="Passcode" autofocus>
-      <button class="primary" id="unlock" type="submit">Unlock</button>
-    </form>
-    <p class="error" id="error" role="alert"></p>
+  <main class="stage">
+    <section class="side">
+      <div class="brand"><img src="../icons/icon-32.png" alt="" width="22" height="22"> <span>Latch</span></div>
+
+      <div class="content">
+        <div class="clock" aria-hidden="true"><time id="clock"></time><p id="date"></p></div>
+
+        <!-- 1. unlock -->
+        <div id="viewUnlock">
+          <h1 id="title">This profile is locked</h1>
+          <p class="muted" id="reason">Enter your passcode to continue.</p>
+          <form id="form" autocomplete="off">
+            <div class="pw">
+              <input class="input" id="passcode" type="password" placeholder="Passcode" aria-label="Passcode" aria-describedby="error caps" autofocus>
+              <button type="button" class="reveal" id="reveal" aria-label="Show passcode"><svg class="i"><use href="icons.svg#eye"/></svg></button>
+            </div>
+            <button class="btn primary wide" id="unlock" type="submit">Unlock</button>
+          </form>
+          <p class="note" id="caps" hidden>Caps Lock is on</p>
+          <p class="error" id="error" role="alert"></p>
+          <p class="wait muted small" id="countdown" aria-hidden="true"></p>
+          <div class="alts">
+            <button class="btn quiet" id="touchId" type="button" hidden><svg class="i"><use href="icons.svg#fingerprint"/></svg> Use Touch ID</button>
+            <button class="btn quiet" id="forgot" type="button">Forgot passcode?</button>
+          </div>
+        </div>
+
+        <!-- 2. recover with the recovery code -->
+        <div id="viewRecover" hidden>
+          <h1>Reset your passcode</h1>
+          <p class="muted">Enter the recovery code you saved when you set up Latch, then choose a new passcode.</p>
+          <form id="recoverForm" autocomplete="off">
+            <label>Recovery code <input class="input mono" id="recoveryCode" type="text" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX" autocapitalize="characters" spellcheck="false"></label>
+            <label>New passcode <span class="pw"><input class="input" id="newPass" type="password" autocomplete="new-password"><button type="button" class="reveal" aria-label="Show passcode"><svg class="i"><use href="icons.svg#eye"/></svg></button></span></label>
+            <label>Repeat it <input class="input" id="newPass2" type="password" autocomplete="new-password"></label>
+            <button class="btn primary wide" type="submit" id="recoverBtn">Reset passcode</button>
+          </form>
+          <p class="error" id="recoverError" role="alert"></p>
+          <div class="alts"><button class="btn quiet" id="backToUnlock" type="button">Back</button></div>
+        </div>
+
+        <!-- 3. a new recovery code after a reset -->
+        <div id="viewRecovered" hidden>
+          <h1>Passcode reset</h1>
+          <p class="muted">Your old recovery code no longer works. Save this new one somewhere safe, away from this computer.</p>
+          <div class="code" id="newCode" aria-live="polite"></div>
+          <div class="row"><button class="btn" id="copyCode" type="button"><svg class="i"><use href="icons.svg#copy"/></svg> Copy</button></div>
+          <label class="check"><input type="checkbox" id="savedCode"> I have saved my recovery code</label>
+          <button class="btn primary wide" id="finish" type="button" disabled>Unlock</button>
+        </div>
+      </div>
+
+      <p class="foot muted small"><svg class="i"><use href="icons.svg#shield-check"/></svg> <span id="footText">Your tabs, windows and groups are untouched.</span></p>
+    </section>
+
+    <aside class="art" aria-hidden="true"><img src="art/bust.svg" alt=""></aside>
   </main>
   <script type="module" src="lock.js"></script>
 </body>
