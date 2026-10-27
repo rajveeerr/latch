@@ -1,9 +1,30 @@
 import { b64u } from '../src/lib/webauthn.js';
+import { mountKerby } from './kerby.js';
+import { mountScene } from './scene.js';
 
 const $ = (id) => document.getElementById(id);
 const send = (message) => chrome.runtime.sendMessage(message);
 const form = $('form'), input = $('passcode'), button = $('unlock');
 let countdown;
+let calmTimer;
+
+mountScene($('sceneSlot'));
+const kerby = mountKerby($('kerbySlot'), { state: 'guard' });
+const calm = (after = 0) => { clearTimeout(calmTimer); calmTimer = setTimeout(() => kerby.set(document.activeElement === input && input.value ? 'typing' : 'guard'), after); };
+
+// the card tilts toward the pointer, and the painted layers slide at different depths
+const tilt = $('tilt');
+if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  let raf = 0;
+  window.addEventListener('pointermove', (event) => {
+    if (raf) return;
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      tilt.style.setProperty('--mx', (event.clientX / innerWidth * 2 - 1).toFixed(3));
+      tilt.style.setProperty('--my', (event.clientY / innerHeight * 2 - 1).toFixed(3));
+    });
+  }, { passive: true });
+}
 let pendingPasscode = '';        // the passcode just set by a reset, used to unlock afterwards
 
 // ---------- clock ----------
@@ -30,6 +51,7 @@ tickClock();
 function show(view) {
   for (const id of ['viewUnlock', 'viewRecover', 'viewRecovered']) $(id).hidden = id !== view;
   const focus = { viewUnlock: input, viewRecover: $('recoveryCode'), viewRecovered: $('savedCode') }[view];
+  kerby.set(view === 'viewRecovered' ? 'happy' : 'guard');
   focus.focus();
 }
 $('forgot').addEventListener('click', () => show('viewRecover'));
@@ -42,10 +64,14 @@ for (const reveal of document.querySelectorAll('.reveal')) {
     const showing = field.type === 'password';
     field.type = showing ? 'text' : 'password';
     reveal.setAttribute('aria-label', showing ? 'Hide passcode' : 'Show passcode');
+    if (field === input) kerby.set(showing ? 'peek' : (input.value ? 'typing' : 'guard'));
     reveal.querySelector('use').setAttribute('href', showing ? 'icons.svg#eye-off' : 'icons.svg#eye');
     field.focus();
   });
 }
+input.addEventListener('input', () => kerby.set(input.type === 'text' ? 'peek' : (input.value ? 'typing' : 'guard')));
+input.addEventListener('focus', () => { if (input.value) kerby.set(input.type === 'text' ? 'peek' : 'typing'); });
+input.addEventListener('blur', () => kerby.set('guard'));
 const caps = (event) => { $('caps').hidden = !event.getModifierState?.('CapsLock'); };
 input.addEventListener('keydown', caps);
 input.addEventListener('keyup', caps);
@@ -53,10 +79,11 @@ window.addEventListener('focus', () => { if (!$('viewUnlock').hidden && !input.d
 
 // ---------- feedback ----------
 function fail(message) {
+  kerby.set('growl'); calm(1500);
   $('error').textContent = '';
   requestAnimationFrame(() => { $('error').textContent = message; });     // re-announced each time
   input.setAttribute('aria-invalid', 'true');
-  const content = document.querySelector('.content');
+  const content = document.querySelector('.panel');
   content.classList.remove('shake'); void content.offsetWidth; content.classList.add('shake');
   input.focus(); input.select();
 }
@@ -85,7 +112,8 @@ function showWait(ms) {
 }
 
 function done(method) {
-  document.querySelector('.content').classList.add('done');
+  kerby.set('happy');
+  document.querySelector('.panel').classList.add('done');
   $('title').textContent = 'Unlocked';
   $('reason').textContent = 'Restoring your windows…';
   button.disabled = true;
@@ -93,7 +121,16 @@ function done(method) {
   setTimeout(() => { $('reason').textContent = 'You can close this window.'; button.disabled = false; }, 3000);
 }
 
+async function loadStats() {
+  const { events } = await send({ type: 'getActivity' });
+  const count = (type) => events.filter((e) => e.type === type).length;
+  $('stLocks').textContent = count('lock');
+  $('stUnlocks').textContent = count('unlock');
+  $('stFailed').textContent = count('failed');
+}
+
 async function init() {
+  loadStats();
   const status = await send({ type: 'getStatus' });
   if (status.reason) $('reason').textContent = status.reason + '.';
   if (status.scope === 'private') $('footText').textContent = 'Only your private windows are locked. Everything else stays open.';

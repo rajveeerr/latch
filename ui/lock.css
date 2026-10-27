@@ -1,50 +1,64 @@
-body { min-height: 100vh; }
-.stage { min-height: 100vh; display: grid; grid-template-columns: minmax(360px, 1fr) minmax(0, 1fr); gap: 0; }
-
-.side { display: flex; flex-direction: column; padding: 28px 40px 28px; min-height: 100vh; }
-.brand { display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: 14px; letter-spacing: -.005em; }
+.stage { min-height: 100vh; display: grid; grid-template-rows: auto 1fr auto; padding: 24px 40px 24px; }
+.brand { display: flex; align-items: center; gap: 9px; font: 600 14px var(--display); letter-spacing: -.01em; }
 .brand img { border-radius: 6px; }
-.content { margin: auto 0; width: min(380px, 100%); align-self: center; padding: 24px 0; display: grid; gap: 14px; }
-
-.clock { margin-bottom: 10px; }
-.clock time { display: block; font-size: 64px; line-height: 1; font-weight: 300; letter-spacing: -.035em; }
-.clock .ampm { font-size: 20px; font-weight: 400; letter-spacing: 0; margin-left: 8px; color: var(--text-2); }
-.clock p { margin-top: 8px; font-size: 15px; color: var(--text-2); }
-
-h1 { font-size: 22px; letter-spacing: -.015em; }
-#reason { margin-top: 4px; font-size: 14px; }
-form { display: grid; gap: 10px; margin-top: 16px; }
-label { display: grid; gap: 6px; font-size: 13px; font-weight: 500; }
-.mono { font-family: var(--mono); letter-spacing: .02em; }
-.note { margin-top: 4px; font-size: 12.5px; color: var(--warn); }
-.error { margin-top: 2px; font-size: 13px; color: var(--danger); }
-.error:empty, .wait:empty { display: none; }
-.alts { display: flex; gap: 6px; margin: 4px 0 0 -14px; flex-wrap: wrap; }
+.duo { display: grid; grid-template-columns: auto minmax(300px, 400px); gap: clamp(40px, 8vw, 112px); align-items: center; justify-content: center; padding: 16px 0; }
 .foot { display: flex; align-items: center; gap: 7px; }
 .foot svg.i { width: 15px; height: 15px; }
 
-.code { font: 500 17px/1.4 var(--mono); letter-spacing: .04em; padding: 14px 16px; border-radius: var(--r-ctl); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-strong); word-break: break-all; margin-top: 4px; }
+/* ---- the trading card ---- */
+.cardwrap { perspective: 1000px; }
+.tilt { transform: rotateX(calc(var(--my, 0) * -6deg)) rotateY(calc(var(--mx, 0) * 8deg)); transition: transform .25s var(--ease); transform-style: preserve-3d; will-change: transform; }
+.card {
+  position: relative; width: min(384px, 84vw); padding: 14px 14px 12px; border-radius: 26px; color: #eef1ff; isolation: isolate;
+  background: linear-gradient(165deg, #243d8c 0%, #131f4d 62%, #0e1738 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .16), inset 0 1px 0 rgba(255, 255, 255, .28), 0 2px 6px rgba(0, 0, 0, .25), 0 34px 60px rgba(0, 0, 0, .32);
+}
+.card::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: url(art/grain.png) 96px; opacity: .45; pointer-events: none; z-index: 3; }
+.plate { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 2px 4px 0; }
+.nm { font: 650 25px/1.1 var(--display); letter-spacing: -.035em; }
+.role { font-size: 11.5px; color: rgba(238, 241, 255, .68); letter-spacing: .01em; }
+.art { position: relative; margin-top: 12px; aspect-ratio: 306 / 270; }
+.scene-slot { position: absolute; inset: 0; border-radius: 16px; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .2); }
+.scene-slot svg { position: absolute; inset: -14px; width: calc(100% + 28px); height: calc(100% + 28px); display: block; }
+.scene .layer-back { transform: translate(calc(var(--mx, 0) * -7px), calc(var(--my, 0) * -4px)); transition: transform .25s var(--ease); }
+.scene .layer-mid { transform: translate(calc(var(--mx, 0) * -3px), calc(var(--my, 0) * -2px)); transition: transform .25s var(--ease); }
+.scene .layer-front { transform: translate(calc(var(--mx, 0) * 3px), calc(var(--my, 0) * 2px)); transition: transform .25s var(--ease); }
+/* Kerby sits in front of the scene and his paws spill over the frame: the breakout */
+.kerby-slot { position: absolute; left: 50%; bottom: -22px; width: 70%; translate: -50% 0; z-index: 2; transform: translate3d(calc(var(--mx, 0) * 9px), calc(var(--my, 0) * 5px), 40px); transition: transform .25s var(--ease); }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); margin: 30px 0 0; padding: 12px 4px 4px; border-top: 1px solid rgba(255, 255, 255, .14); }
+.stats div { display: grid; gap: 1px; text-align: center; }
+.stats dd { margin: 0; font: 600 22px/1.1 var(--display); letter-spacing: -.03em; }
+.stats dt { font-size: 11px; color: rgba(238, 241, 255, .66); }
+.sheen { position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 4; background: radial-gradient(circle at calc(50% + var(--mx, 0) * 40%) calc(30% + var(--my, 0) * 30%), rgba(255, 255, 255, .22), transparent 46%); }
+
+/* ---- the panel ---- */
+.panel { display: grid; gap: 14px; align-content: center; }
+.clock time { display: block; font: 500 64px/1 var(--display); letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
+.clock .ampm { font: 500 18px var(--font); letter-spacing: 0; margin-left: 8px; color: var(--text-2); }
+.clock p { margin-top: 8px; font-size: 14.5px; color: var(--text-2); }
+.panel h1 { font-size: 26px; margin-top: 6px; }
+#reason { font-size: 14px; }
+#viewUnlock, #viewRecover, #viewRecovered { display: grid; gap: 12px; }
+h1 + p { margin-top: -6px; }
+form { display: grid; gap: 10px; margin-top: 4px; }
+label { display: grid; gap: 6px; font-size: 13px; font-weight: 500; }
+.mono { font-family: var(--mono); letter-spacing: .02em; }
+.note { font-size: 12.5px; color: var(--warn); }
+.error { font-size: 13px; color: var(--danger); }
+.error:empty, .wait:empty { display: none; }
+.alts { display: flex; gap: 6px; margin: 2px 0 0 -14px; flex-wrap: wrap; }
+.code { font: 500 17px/1.4 var(--mono); letter-spacing: .04em; padding: 14px 16px; border-radius: var(--r-ctl); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-strong); word-break: break-all; }
 .check { display: flex; align-items: center; gap: 9px; font-weight: 400; }
-.check input { width: 16px; height: 16px; accent-color: var(--patina); }
+.check input { width: 16px; height: 16px; accent-color: var(--accent); }
 .row { display: flex; gap: 8px; }
-
-/* the marble bust on a plinth of stone */
-.art {
-  position: relative; margin: 14px 14px 14px 0; border-radius: 26px; overflow: hidden; display: grid; place-items: end center;
-  background: radial-gradient(70% 55% at 50% 38%, var(--art-glow), transparent 72%), var(--art-bg);
-  box-shadow: inset 0 0 0 1px var(--line);
-}
-.art img { width: min(88%, 560px); height: auto; max-height: 92%; margin-bottom: 4%; filter: drop-shadow(0 24px 36px rgba(26, 25, 23, .14)); animation: settle .7s var(--ease) both; }
-:root { --art-bg: #e9e5dc; --art-glow: rgba(255, 255, 255, .85); }
-@media (prefers-color-scheme: dark) { :root { --art-bg: #1c1b19; --art-glow: rgba(255, 255, 255, .07); } .art img { filter: drop-shadow(0 24px 36px rgba(0, 0, 0, .5)); } }
-
-.shake { animation: shake .32s var(--ease); }
-@keyframes settle { from { opacity: 0; transform: translateY(12px); } }
+.panel.shake { animation: shake .32s var(--ease); }
 @keyframes shake { 20% { transform: translateX(-6px); } 45% { transform: translateX(5px); } 70% { transform: translateX(-3px); } }
+@media (prefers-reduced-motion: no-preference) { .tilt { animation: bob 7s ease-in-out infinite; } @keyframes bob { 50% { translate: 0 -5px; } } }
 
-@media (max-width: 860px) {
-  .stage { grid-template-columns: 1fr; }
-  .art { display: none; }
-  .side { padding: 22px 22px 24px; }
+@media (max-width: 880px) {
+  .stage { padding: 20px 22px 22px; }
+  .duo { grid-template-columns: 1fr; justify-items: center; gap: 28px; }
+  .cardwrap { order: -1; } .panel { width: min(380px, 100%); }
+  .card { width: min(300px, 80vw); } .clock time { font-size: 46px; }
 }
-@media (max-height: 560px) { .clock time { font-size: 44px; } }
+@media (max-height: 720px) and (min-width: 881px) { .card { width: 300px; } .clock time { font-size: 48px; } }

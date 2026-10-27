@@ -4,15 +4,36 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Locked – Latch</title>
+  <link rel="preload" href="fonts/geist-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/bricolage-grotesque-latin-opsz-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="common.css">
+  <link rel="stylesheet" href="kerby.css">
   <link rel="stylesheet" href="lock.css">
 </head>
 <body>
   <main class="stage">
-    <section class="side">
-      <div class="brand"><img src="../icons/icon-32.png" alt="" width="22" height="22"> <span>Latch</span></div>
+    <div class="brand"><img src="../icons/icon-32.png" alt="" width="22" height="22"> <span>Latch</span></div>
 
-      <div class="content">
+    <section class="duo">
+      <div class="cardwrap" aria-hidden="true">
+        <div class="tilt" id="tilt">
+          <div class="card">
+            <div class="plate"><span class="nm">Kerby</span><span class="role">Guardian of the gate</span></div>
+            <div class="art">
+              <div class="scene-slot" id="sceneSlot"></div>
+              <div class="kerby-slot" id="kerbySlot"></div>
+            </div>
+            <dl class="stats">
+              <div><dd id="stLocks">0</dd><dt>Locks</dt></div>
+              <div><dd id="stUnlocks">0</dd><dt>Unlocks</dt></div>
+              <div><dd id="stFailed">0</dd><dt>Wrong guesses</dt></div>
+            </dl>
+            <i class="sheen"></i>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
         <div class="clock" aria-hidden="true"><time id="clock"></time><p id="date"></p></div>
 
         <!-- 1. unlock -->
@@ -59,11 +80,9 @@
           <button class="btn primary wide" id="finish" type="button" disabled>Unlock</button>
         </div>
       </div>
-
-      <p class="foot muted small"><svg class="i"><use href="icons.svg#shield-check"/></svg> <span id="footText">Your tabs, windows and groups are untouched.</span></p>
     </section>
 
-    <aside class="art" aria-hidden="true"><img src="art/bust.svg" alt=""></aside>
+    <p class="foot muted small"><svg class="i"><use href="icons.svg#shield-check"/></svg> <span id="footText">Your tabs, windows and groups are untouched.</span></p>
   </main>
   <script type="module" src="lock.js"></script>
 </body>
