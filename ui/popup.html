@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Latch</title>
+  <link rel="stylesheet" href="common.css">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <img src="../icons/icon-48.png" alt="" width="28" height="28">
+    <div><strong>Latch</strong><div class="muted" id="status">Loading…</div></div>
+  </header>
+  <div id="setup" hidden>
+    <p>Set a passcode to start protecting this profile.</p>
+    <button class="primary" id="openSetup">Set passcode</button>
+  </div>
+  <div id="main" hidden>
+    <button class="primary" id="lock">Lock now</button>
+    <div class="row">
+      <select id="pauseFor" aria-label="Pause for">
+        <option value="15">Pause 15 minutes</option>
+        <option value="60">Pause 1 hour</option>
+        <option value="240">Pause 4 hours</option>
+        <option value="0">Pause until resumed</option>
+      </select>
+      <button id="pause">Pause</button>
+    </div>
+    <input id="passcode" type="password" placeholder="Passcode (needed to pause)" aria-label="Passcode" hidden>
+    <button id="resume" hidden>Resume protection</button>
+    <p class="error" id="error" role="alert"></p>
+    <button id="settings" class="link">Settings</button>
+  </div>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

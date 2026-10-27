@@ -1,0 +1,8 @@
+body { width: 280px; padding: 14px; }
+header { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }
+header strong { font-size: 15px; }
+#main, #setup { display: grid; gap: 10px; }
+.row { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+button.link { background: none; border: none; color: var(--muted); padding: 2px; text-align: left; }
+button.link:hover { color: var(--text); }
+p { margin: 0; }

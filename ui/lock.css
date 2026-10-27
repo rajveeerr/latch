@@ -1,0 +1,7 @@
+body { min-height: 100vh; display: grid; place-items: center; background: radial-gradient(circle at 50% 30%, #1a1d28, var(--bg) 60%); }
+main { width: min(340px, 90vw); text-align: center; }
+h1 { margin: 16px 0 4px; font-size: 26px; font-weight: 650; }
+form { display: grid; gap: 10px; margin-top: 20px; }
+.shake { animation: shake .3s; }
+@keyframes shake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+@media (prefers-reduced-motion: reduce) { .shake { animation: none; } }

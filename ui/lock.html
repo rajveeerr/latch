@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Locked – Latch</title>
+  <link rel="stylesheet" href="common.css">
+  <link rel="stylesheet" href="lock.css">
+</head>
+<body>
+  <main>
+    <img class="logo" src="../icons/icon-128.png" alt="">
+    <h1>Locked</h1>
+    <p class="muted" id="reason"></p>
+    <form id="form" autocomplete="off">
+      <input id="passcode" type="password" placeholder="Passcode" aria-label="Passcode" autofocus>
+      <button class="primary" id="unlock" type="submit">Unlock</button>
+    </form>
+    <p class="error" id="error" role="alert"></p>
+  </main>
+  <script type="module" src="lock.js"></script>
+</body>
+</html>
