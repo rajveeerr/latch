@@ -25,7 +25,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/lock-light.png" alt="The Latch lock screen: a trading card of Kerby, the guard pup, beside the passcode field" width="880">
+  <img src="docs/screenshots/lock-card-light.png" alt="The Latch lock screen: Aegis on his trading card beside the passcode field" width="880">
 </p>
 
 ## Why I built this
@@ -49,12 +49,12 @@ I was not alone. Brave's own tracker lists [password protection for tabs and pro
 | **Passcode lock** that covers every page, pauses media and mutes tabs | **Touch ID** (beta) through WebAuthn, with your passcode always as backup |
 | **Private windows only** mode, like Safari, so the rest of the browser stays open | **Auto-lock** after inactivity, in the background, on sleep or at startup |
 | **Recovery code**, so a forgotten passcode never means removing the extension | **Activity log** of locks, unlocks and wrong guesses, on your computer only |
-| **Kerby**, a three-headed guard pup who closes his eyes while you type and growls at a wrong guess | **Light and dark** that follow your system, in a calm native-feeling interface |
+| **Aegis**, a three-headed guard pup who closes his eyes while you type and growls at a wrong guess | **Two lock screens**: Aegis on a trading card, or a brass combination lock whose dial turns as you type | **Light and dark** that follow your system, in a calm native-feeling interface |
 
 <p align="center">
-  <img src="docs/screenshots/onboarding-welcome.png" alt="Onboarding with Kerby" width="300">
+  <img src="docs/screenshots/onboarding-welcome.png" alt="Onboarding with Aegis" width="300">
   &nbsp;
-  <img src="docs/screenshots/lock-growl.png" alt="Kerby growling at a wrong passcode" width="300">
+  <img src="docs/screenshots/lock-card-wrong.png" alt="Aegis scowling at a wrong passcode" width="300">
   &nbsp;
   <img src="docs/screenshots/popup-light.png" alt="The toolbar popup" width="170">
 </p>
@@ -66,7 +66,7 @@ Latch is not in a web store yet, so you load it as an unpacked extension.
 1. [Download the latest zip](https://github.com/rajveeerr/latch/releases/latest) and unzip it somewhere permanent. The browser reads it from that folder, so do not delete it.
 2. Open `brave://extensions` and switch on **Developer mode**.
 3. Click **Load unpacked** and choose the unzipped folder (the one with `manifest.json` in it).
-4. Kerby says hello. Pick a passcode and **save your recovery code**. Optionally, switch on **Allow in private** in the extension's details so private windows are covered too.
+4. Aegis says hello. Pick a passcode and **save your recovery code**. Optionally, switch on **Allow in private** in the extension's details so private windows are covered too.
 
 Latch locks the profile it is installed in. Install it in each profile you want to protect. `Control+Shift+L` locks instantly.
 
@@ -113,13 +113,12 @@ Latch is a **privacy lock for a browser you leave on a desk**, not a security bo
 ```sh
 npm install                  # only for the tests and the art scripts
 npm test                     # 41 unit tests: passcode, recovery, WebAuthn, settings, safety rules
-BRAVE=1 npm run test:e2e     # 17 end-to-end checks in real Brave with a throwaway profile
+BRAVE=1 npm run test:e2e     # 19 end-to-end checks in real Brave with a throwaway profile
 npm run zip                  # dist/latch-<version>.zip
 node scripts/make-icons-sprite.mjs   # icons from Lucide
-node scripts/build-site.mjs          # copy shared assets into site/
 ```
 
-The safety test fails the build if any code closes, reloads, discards or navigates a tab, closes a window other than its own lock window, asks for more permissions or touches the network. Kerby, the painted scene and the isometric latch are drawn in code (`ui/kerby.js`, `ui/scene.js`, `scripts/make-mechanism.mjs`).
+The safety test fails the build if any code closes, reloads, discards or navigates a tab, closes a window other than its own lock window, asks for more permissions or touches the network. Aegis, the painted scene, the engraved poster and the combination lock are drawn in code (`ui/aegis.js`, `ui/scene.js`, `ui/poster.js`, `ui/lockdial.js`).
 
 </details>
 

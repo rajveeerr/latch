@@ -44,8 +44,9 @@ try {
     await cdp.send('WebAuthn.enable');
     await cdp.send('WebAuthn.addVirtualAuthenticator', { options: { protocol: 'ctap2', transport: 'internal', hasResidentKey: false, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true } });
   };
-  const open = async (file, size, scheme = 'light', touch = false) => {
+  const open = async (file, size, scheme = 'light', touch = false, lockStyle = null) => {
     const page = await context.newPage();
+    if (lockStyle) await page.addInitScript((value) => localStorage.setItem('lockStyle', value), lockStyle);
     await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' });
     await page.setViewportSize(size);
     if (touch) await withTouchId(page);
@@ -123,23 +124,26 @@ try {
     await sample.close();
   }
 
-  // The lock screen: both appearances, Aegis reacting, and the recovery path.
+  // The lock screen: both styles, both appearances, reacting to what you do.
   await worker.evaluate(() => chrome.storage.local.set({ state: { locked: true, reason: '5 min of inactivity' } }));
-  for (const scheme of ['light', 'dark']) {
-    const lock = await open('ui/lock.html', { width: 1440, height: 900 }, scheme, true);
-    await lock.waitForFunction(() => document.getElementById('reason').textContent.includes('inactivity'));
-    await lock.waitForTimeout(300);
-    await shot(lock, scheme === 'light' ? 'lock-light.png' : 'lock.png');
-    if (scheme === 'light') {
-      await lock.fill('#passcode', 'not it');
-      await shot(lock, 'lock-typing.png');
-      await lock.click('#unlock');
-      await lock.waitForSelector('.aegis[data-state="growl"]');
-      await shot(lock, 'lock-growl.png');
-      await lock.click('#forgot');
-      await shot(lock, 'lock-recover.png');
+  for (const style of ['card', 'dial']) {
+    for (const scheme of ['light', 'dark']) {
+      const lock = await open('ui/lock.html', { width: 1440, height: 900 }, scheme, true, style);
+      await lock.waitForFunction(() => document.getElementById('reason').textContent.includes('inactivity'));
+      await lock.waitForTimeout(400);
+      await shot(lock, `lock-${style}-${scheme}.png`);
+      if (scheme === 'light') {
+        await lock.fill('#passcode', 'not it');
+        await lock.waitForTimeout(500);
+        await shot(lock, `lock-${style}-typing.png`);
+        await lock.click('#unlock');
+        await lock.waitForSelector(style === 'card' ? '.aegis[data-state="growl"]' : '#dialVisual.wrong');
+        await lock.waitForTimeout(200);
+        await shot(lock, `lock-${style}-wrong.png`);
+        if (style === 'card') { await lock.click('#forgot'); await shot(lock, 'lock-recover.png'); }
+      }
+      await lock.close();
     }
-    await lock.close();
   }
   await worker.evaluate(() => chrome.storage.local.set({ state: { locked: false } }));
 

@@ -21,7 +21,7 @@ function dialSvg() {
 </svg>`;
 }
 
-const SHACKLE = `<svg viewBox="0 -12 220 162" aria-hidden="true">
+const SHACKLE = `<svg viewBox="-10 -30 240 180" aria-hidden="true">
   <defs><linearGradient id="steel" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#8c97b8"/><stop offset=".3" stop-color="#f2f5fb"/><stop offset=".55" stop-color="#b5bfd8"/><stop offset="1" stop-color="#6d7899"/></linearGradient></defs>
   <path d="M34 150V70a76 76 0 0 1 152 0v80" fill="none" stroke="url(#steel)" stroke-width="30"/>
   <path d="M34 150V70a76 76 0 0 1 152 0v80" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="3" transform="translate(-6 -2)"/>

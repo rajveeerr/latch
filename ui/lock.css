@@ -41,9 +41,9 @@ html[data-lock-style="card"] #dialVisual, html[data-lock-style="dial"] #cardVisu
 .sheen { position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 4; background: radial-gradient(circle at calc(50% + var(--mx) * 40%) calc(30% + var(--my) * 30%), rgba(255, 255, 255, .22), transparent 46%); }
 
 /* ---------- style 2: the combination lock ---------- */
-.lockbox { --turn: 0deg; position: relative; width: min(392px, 88vw); padding-top: 84px; transform: rotateX(calc(var(--my) * -5deg)) rotateY(calc(var(--mx) * 7deg)); transition: transform .25s var(--ease); transform-style: preserve-3d; }
+.lockbox { --turn: 0deg; position: relative; width: min(392px, 88vw); padding-top: 96px; transform: rotateX(calc(var(--my) * -5deg)) rotateY(calc(var(--mx) * 7deg)); transition: transform .25s var(--ease); transform-style: preserve-3d; }
 .shackle { position: absolute; top: 0; left: 50%; width: 230px; margin-left: -115px; transform-origin: 14% 100%; transition: transform .6s var(--ease) .25s; z-index: 0; filter: drop-shadow(0 8px 8px rgba(0, 0, 0, .3)); }
-.shackle svg { display: block; width: 100%; height: auto; }
+.shackle svg { display: block; width: 100%; height: auto; overflow: visible; }
 .lockbody {
   position: relative; z-index: 1; padding: 30px 28px 26px; border-radius: 30px; display: grid; gap: 20px; justify-items: center;
   background: repeating-linear-gradient(90deg, rgba(255, 255, 255, .10) 0 1px, rgba(20, 40, 100, .035) 1px 3px), linear-gradient(158deg, #f4f6fc 0%, #cdd5e8 42%, #a6b1cf 100%);
