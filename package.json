@@ -1,6 +1,6 @@
 {
   "name": "latch",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Lock a Brave/Chrome profile behind a passcode without touching your tabs.",
   "private": true,
   "type": "module",
@@ -12,6 +12,7 @@
     "zip": "node scripts/zip.mjs"
   },
   "devDependencies": {
+    "lucide-static": "^1.62.0",
     "playwright": "^1.50.0"
   },
   "license": "MIT"
