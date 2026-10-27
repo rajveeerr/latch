@@ -63,6 +63,7 @@ try {
   // The install opens the settings page by itself.
   const options = context.pages().find((p) => p.url().includes('options.html')) || await context.newPage();
   if (!options.url().includes('options.html')) await options.goto(ext('ui/options.html'));
+  await options.click('#obStart');                                  // meet Kerby, then choose a passcode
   await options.fill('#newPasscode', PASS);
   await options.fill('#repeatPasscode', PASS);
   await options.click('#savePasscode');
@@ -72,8 +73,10 @@ try {
   assert.equal(await options.isDisabled('#recoveryDone'), true, 'cannot continue before confirming the code is saved');
   await options.check('#recoverySaved');
   await options.click('#recoveryDone');
+  await options.waitForSelector('#obPrivate:not([hidden])');       // onboarding carries on to private windows
+  await options.click('#obSkip');
   await options.waitForSelector('#content:not([hidden])');
-  ok('first run: passcode set, then a recovery code that must be acknowledged');
+  ok('first run: onboarding sets a passcode, then a recovery code that must be acknowledged');
 
   // A page that is playing sound with an unsaved draft.
   const page = await context.newPage();
@@ -124,10 +127,12 @@ try {
   // Wrong passcode, then right.
   const lock2 = lockPage();
   await lock2.fill('#passcode', 'nope');
+  assert.equal(await lock2.getAttribute('svg.kerby', 'data-state'), 'typing', 'Kerby shuts his eyes while you type');
   await lock2.click('#unlock');
   await lock2.waitForFunction(() => document.getElementById('error').textContent.includes('Wrong'));
+  await lock2.waitForSelector('svg.kerby[data-state="growl"]');
   assert.ok(lockPage());
-  ok('a wrong passcode is refused');
+  ok('a wrong passcode is refused, and Kerby growls');
 
   await lock2.fill('#passcode', PASS);
   await lock2.click('#unlock');
@@ -196,6 +201,7 @@ try {
   await lockR.fill('#recoveryCode', recoveryCode.toLowerCase().replaceAll('-', ' '));
   await lockR.click('#recoverBtn');
   await lockR.waitForSelector('#viewRecovered:not([hidden])');
+  assert.equal(await lockR.getAttribute('svg.kerby', 'data-state'), 'happy', 'Kerby is happy about the reset');
   const newCode = await lockR.textContent('#newCode');
   assert.notEqual(newCode, recoveryCode, 'a fresh recovery code replaces the old one');
   assert.equal(await lockR.isDisabled('#finish'), true);

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Latch",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Lock this browser profile behind a passcode. Covers pages, hides windows and pauses media. Never closes or changes your tabs.",
   "minimum_chrome_version": "114",
   "icons": {

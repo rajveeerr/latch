@@ -52,20 +52,27 @@ try {
     await page.goto(ext(file));
     return page;
   };
+  const PASS = 'correct horse battery';
 
-  // First run: nothing is set up yet.
-  const setup = await open('ui/options.html', { width: 1120, height: 900 });
-  await setup.waitForFunction(() => document.getElementById('statusTitle').textContent !== 'Latch');
-  await shot(setup, 'settings-setup.png', { fullPage: true });
-  await setup.fill('#newPasscode', 'correct horse battery');
-  await setup.fill('#repeatPasscode', 'correct horse battery');
-  await setup.click('#savePasscode');
-  await setup.waitForSelector('#recoverySheet:not([hidden])');
-  await setup.setViewportSize({ width: 1120, height: 640 });
-  await shot(setup, 'recovery-code.png');
-  await setup.check('#recoverySaved');
-  await setup.click('#recoveryDone');
-  await setup.close();
+  // First run: Kerby walks you through it.
+  const ob = await open('ui/options.html', { width: 1000, height: 760 });
+  await ob.waitForSelector('#onboarding:not([hidden])');
+  await ob.waitForTimeout(500);
+  await shot(ob, 'onboarding-welcome.png');
+  await ob.click('#obStart');
+  await ob.fill('#newPasscode', PASS);
+  await ob.fill('#repeatPasscode', PASS);
+  await ob.waitForSelector('.kerby[data-state="typing"]');
+  await shot(ob, 'onboarding-passcode.png');
+  await ob.click('#savePasscode');
+  await ob.waitForSelector('#recoverySheet:not([hidden])');
+  await shot(ob, 'onboarding-recovery.png');
+  await ob.check('#recoverySaved');
+  await ob.click('#recoveryDone');
+  await ob.waitForSelector('#obPrivate:not([hidden])');
+  await shot(ob, 'onboarding-private.png');
+  await ob.click('#obSkip');
+  await ob.close();
 
   // Settings, light and dark.
   for (const scheme of ['light', 'dark']) {
@@ -73,15 +80,15 @@ try {
     await page.waitForFunction(() => document.getElementById('statusTitle').textContent.includes('Protecting'));
     if (scheme === 'light') {
       await page.click('#touchSetup');
-      await page.fill('#authPasscode', 'correct horse battery');
+      await page.fill('#authPasscode', PASS);
       await page.click('#save');
       await page.waitForSelector('#touchRemove:not([hidden])');
+      await page.waitForTimeout(3000);                      // let the toast fade
     }
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(400);
     await shot(page, scheme === 'light' ? 'settings-light.png' : 'settings-dark.png', { fullPage: true });
     if (scheme === 'light') {
       await page.setViewportSize({ width: 1120, height: 900 });
-      await page.waitForTimeout(3000);                    // let the earlier toast fade
       await page.fill('#autoLockMinutes', '0');
       await page.press('#autoLockMinutes', 'Tab');
       await page.waitForSelector('#authRow:not([hidden])');
@@ -96,11 +103,9 @@ try {
   for (const scheme of ['light', 'dark']) {
     const popup = await open('ui/popup.html', { width: 320, height: 330 }, scheme);
     await popup.waitForFunction(() => document.getElementById('status').textContent.includes('Protecting'));
+    await popup.waitForTimeout(300);
     await shot(popup, scheme === 'light' ? 'popup-light.png' : 'popup.png', { fullPage: true });
-    if (scheme === 'dark') {
-      await popup.click('#pauseToggle');
-      await shot(popup, 'popup-pause.png', { fullPage: true });
-    }
+    if (scheme === 'dark') { await popup.click('#pauseToggle'); await shot(popup, 'popup-pause.png', { fullPage: true }); }
     await popup.close();
   }
 
@@ -118,23 +123,30 @@ try {
     await sample.close();
   }
 
-  // The lock screen, in both appearances, with Touch ID set up, then the recovery path.
+  // The lock screen: both appearances, Kerby reacting, and the recovery path.
   await worker.evaluate(() => chrome.storage.local.set({ state: { locked: true, reason: '5 min of inactivity' } }));
   for (const scheme of ['light', 'dark']) {
     const lock = await open('ui/lock.html', { width: 1440, height: 900 }, scheme, true);
     await lock.waitForFunction(() => document.getElementById('reason').textContent.includes('inactivity'));
+    await lock.waitForTimeout(300);
     await shot(lock, scheme === 'light' ? 'lock-light.png' : 'lock.png');
     if (scheme === 'light') {
+      await lock.fill('#passcode', 'not it');
+      await shot(lock, 'lock-typing.png');
+      await lock.click('#unlock');
+      await lock.waitForSelector('.kerby[data-state="growl"]');
+      await shot(lock, 'lock-growl.png');
       await lock.click('#forgot');
       await shot(lock, 'lock-recover.png');
     }
     await lock.close();
   }
   await worker.evaluate(() => chrome.storage.local.set({ state: { locked: false } }));
+
   // "Private windows only" before Latch is allowed in private windows: the overview and the popup say so.
   const scoped = await context.newPage();
   await scoped.goto(ext('ui/options.html'));
-  await scoped.evaluate(async (pass) => chrome.runtime.sendMessage({ type: 'saveSettings', settings: { ...(await chrome.runtime.sendMessage({ type: 'getSettings' })).settings, scope: 'private' }, passcode: pass }), 'correct horse battery');
+  await scoped.evaluate(async (pass) => chrome.runtime.sendMessage({ type: 'saveSettings', settings: { ...(await chrome.runtime.sendMessage({ type: 'getSettings' })).settings, scope: 'private' }, passcode: pass }), PASS);
   await scoped.close();
   const warn = await open('ui/options.html', { width: 1120, height: 420 });
   await warn.waitForFunction(() => document.getElementById('statusTitle').textContent.includes('cannot be locked'));
