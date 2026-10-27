@@ -13,40 +13,51 @@ body::after { opacity: .42; }
 .clock p { margin-top: 6px; font-size: 13.5px; color: var(--text-2); }
 
 /* ---------- the device ---------- */
-.device { --turn: 0deg; --mx: 0; --my: 0; width: min(440px, 92vw); perspective: 900px; }
+.device { --turn: 0deg; --mx: 0; --my: 0; position: relative; width: min(520px, 94vw); perspective: 1100px; margin-top: 4px; }
+.device::after { content: ""; position: absolute; left: 6%; right: 6%; bottom: -26px; height: 36px; border-radius: 50%; background: rgba(30, 28, 20, .34); filter: blur(18px); z-index: -1; }
 .body {
-  position: relative; display: grid; gap: 8px; padding: 12px 12px 14px; border-radius: 20px;
-  background: linear-gradient(180deg, var(--putty-a), var(--putty-b));
-  box-shadow: inset 0 1.5px 0 rgba(255, 255, 255, .95), inset 0 -3px 5px rgba(90, 80, 55, .22), inset 0 0 0 1px rgba(90, 80, 55, .16), 0 2px 3px rgba(40, 36, 24, .25), 0 26px 40px -6px rgba(40, 36, 24, .3);
+  position: relative; display: grid; gap: 10px; padding: 14px 14px 16px; border-radius: 30px; isolation: isolate;
+  background: linear-gradient(176deg, #f3f0e7 0%, #e3dfd2 42%, #cfcabb 100%);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .98), inset 0 -4px 6px rgba(88, 78, 52, .26), inset 2px 0 3px rgba(255, 255, 255, .5), inset -2px 0 3px rgba(88, 78, 52, .14), inset 0 0 0 1px rgba(88, 78, 52, .2), 0 1px 1px rgba(40, 36, 24, .3), 0 14px 22px -8px rgba(40, 36, 24, .32);
   transform: rotateX(calc(var(--my) * -4deg)) rotateY(calc(var(--mx) * 6deg)); transition: transform .25s var(--ease);
 }
-.row1, .row2 { display: grid; gap: 8px; }
-.row1 { grid-template-columns: 80px 1fr; } .row2 { grid-template-columns: 80px 1fr; }
-.plate { border-radius: 8px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .85), inset 0 0 0 1px rgba(60, 64, 76, .28); }
-.brushed { background: repeating-linear-gradient(90deg, rgba(255, 255, 255, .22) 0 1px, rgba(40, 44, 56, .05) 1px 2px), linear-gradient(180deg, var(--metal-a), var(--metal-b)); }
-.plate.small { height: 26px; } .plate.long { height: 26px; }
-.plate.grille { height: 74px; background: repeating-linear-gradient(90deg, rgba(255, 255, 255, .22) 0 1px, rgba(40, 44, 56, .05) 1px 2px), linear-gradient(180deg, #cfd1d6, #a3a7b0); }
-.controls { position: relative; height: 74px; display: flex; align-items: center; gap: 16px; padding: 0 16px 0 14px; }
+.body::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: url(art/grain.png) 96px; opacity: .22; mix-blend-mode: multiply; pointer-events: none; z-index: 5; }
+.top { display: grid; grid-template-columns: 24% 1fr; gap: 10px; }
+.right { display: grid; grid-template-rows: 30px 1fr; gap: 10px; }
+.inlay { position: relative; border-radius: 10px;
+  background: repeating-linear-gradient(90deg, rgba(255, 255, 255, .14) 0 1px, rgba(30, 36, 50, .03) 1px 2px), linear-gradient(180deg, #e7e9ed 0%, #c4c8cf 52%, #b1b6c0 100%);
+  box-shadow: inset 0 3px 4px rgba(40, 46, 62, .38), inset 0 -1px 0 rgba(255, 255, 255, .85), inset 0 0 0 1px rgba(60, 66, 80, .35), 0 1px 0 rgba(255, 255, 255, .9); }
+.inlay.grille { min-height: 108px; }
+.controls { display: flex; align-items: center; gap: 18px; padding: 10px 18px 10px 14px; }
 
-.lcd { flex: 1; height: 46px; border-radius: 6px; padding: 5px 10px; display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto 1fr; align-items: center;
-  background: linear-gradient(160deg, #3a4049, var(--lcd)); box-shadow: inset 0 2px 4px rgba(0, 0, 0, .55), inset 0 0 0 1px rgba(0, 0, 0, .5), 0 1px 0 rgba(255, 255, 255, .7); font-family: var(--mono); color: var(--lcd-ink); }
-.lcdBrand { font-size: 9px; letter-spacing: .22em; opacity: .55; }
-.lcdText { grid-column: 2; justify-self: end; font-size: 10px; letter-spacing: .18em; text-shadow: 0 0 6px rgba(150, 230, 170, .55); }
-.lcdDots { grid-column: 1 / -1; font-size: 24px; letter-spacing: .18em; line-height: 1; min-height: 17px; text-shadow: 0 0 7px rgba(150, 230, 170, .6); white-space: nowrap; overflow: hidden; }
+/* LCD under glass */
+.lcd { position: relative; flex: 1; height: 60px; border-radius: 8px; padding: 7px 12px; display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto 1fr; align-items: center; overflow: hidden;
+  background: linear-gradient(160deg, #4a515c, #2a2f37); font-family: var(--mono); color: var(--lcd-ink);
+  box-shadow: inset 0 3px 6px rgba(0, 0, 0, .6), inset 0 0 0 1px rgba(0, 0, 0, .6), 0 1px 0 rgba(255, 255, 255, .85); }
+.lcd .gloss { position: absolute; inset: 0; background: linear-gradient(118deg, rgba(255, 255, 255, .22) 0 34%, rgba(255, 255, 255, 0) 34.5%); pointer-events: none; z-index: 2; }
+.lcdBrand { font-size: 9px; letter-spacing: .24em; opacity: .5; }
+.lcdText { grid-column: 2; justify-self: end; font-size: 10px; letter-spacing: .2em; text-shadow: 0 0 6px rgba(150, 230, 170, .55); }
+.lcdDots { grid-column: 1 / -1; font-size: 28px; letter-spacing: .16em; line-height: 1; min-height: 24px; text-shadow: 0 0 8px rgba(150, 230, 170, .6); white-space: nowrap; overflow: hidden; }
 
-.knob { position: relative; width: 52px; height: 52px; border-radius: 50%; flex: none; transform: rotate(var(--turn)); transition: transform .32s cubic-bezier(.3, 1.5, .5, 1);
-  background: repeating-conic-gradient(from 0deg, rgba(255, 255, 255, .16) 0 5deg, rgba(0, 0, 50, .16) 5deg 10deg), radial-gradient(circle at 38% 30%, #5f82ff, #2548d2 58%, #1a2f93);
-  box-shadow: 0 5px 8px rgba(20, 30, 100, .45), 0 1px 0 rgba(255, 255, 255, .5), inset 0 -2px 3px rgba(0, 0, 50, .4), inset 0 0 0 1.5px rgba(10, 20, 90, .5); }
-.knob i { position: absolute; top: 5px; left: 50%; width: 4px; height: 12px; margin-left: -2px; border-radius: 2px; background: #eaf0ff; box-shadow: 0 0 4px rgba(255, 255, 255, .6); }
-.lamp { width: 24px; height: 24px; border-radius: 50%; flex: none; background: radial-gradient(circle at 36% 30%, #ffb184, #f0662a 55%, #c4400f); box-shadow: 0 2px 3px rgba(80, 30, 0, .45), inset 0 -1px 2px rgba(120, 30, 0, .5), 0 0 0 3px rgba(255, 255, 255, .35), 0 0 0 4px rgba(60, 64, 76, .25); transition: filter .2s, transform .15s; }
-.device.typing .lamp { filter: brightness(1.2) saturate(1.1); }
-.device.wrong .lamp { background: radial-gradient(circle at 36% 30%, #ffb0a8, #e5352a 55%, #8f1a12); animation: blinkLamp .5s 3; }
+/* the knob sits in a recessed well: knurled skirt, glossy blue cap, a pointer notch */
+.knobwell { width: 78px; height: 78px; border-radius: 50%; flex: none; display: grid; place-items: center; background: radial-gradient(circle at 50% 40%, #8e929c, #666b76); box-shadow: inset 0 4px 7px rgba(20, 24, 36, .65), inset 0 0 0 1px rgba(20, 24, 36, .55), 0 1px 0 rgba(255, 255, 255, .9); }
+.knob { position: relative; width: 66px; height: 66px; border-radius: 50%; transform: rotate(var(--turn)); transition: transform .32s cubic-bezier(.3, 1.5, .5, 1); box-shadow: 0 7px 9px rgba(10, 20, 80, .55), 0 2px 0 #1c2f92; }
+.knob .ring { position: absolute; inset: 0; border-radius: 50%; background: repeating-conic-gradient(from 0deg, #3358e0 0 4deg, #1a2f98 4deg 8deg); box-shadow: inset 0 0 0 1px rgba(10, 20, 90, .6); }
+.knob .face { position: absolute; inset: 6px; border-radius: 50%; background: radial-gradient(circle at 34% 26%, #86a2ff 0%, #3b62ee 42%, #2142c8 72%, #1b34a0 100%); box-shadow: inset 0 2px 2px rgba(255, 255, 255, .55), inset 0 -3px 4px rgba(10, 20, 100, .5), 0 0 0 1px rgba(10, 20, 90, .55); }
+.knob .face i { position: absolute; top: 5px; left: 50%; width: 5px; height: 15px; margin-left: -2.5px; border-radius: 3px; background: linear-gradient(#fff, #cfdbff); box-shadow: 0 0 5px rgba(255, 255, 255, .7); }
+.lampwell { width: 40px; height: 40px; border-radius: 50%; flex: none; display: grid; place-items: center; background: radial-gradient(circle at 50% 40%, #8e929c, #666b76); box-shadow: inset 0 3px 5px rgba(20, 24, 36, .6), inset 0 0 0 1px rgba(20, 24, 36, .5), 0 1px 0 rgba(255, 255, 255, .9); }
+.lamp { width: 28px; height: 28px; border-radius: 50%; background: radial-gradient(circle at 34% 26%, #ffc9a4, #ff7b3a 38%, #e5521b 72%, #b83a0c 100%); box-shadow: 0 4px 5px rgba(120, 40, 0, .5), inset 0 1px 1px rgba(255, 255, 255, .7), inset 0 -2px 3px rgba(130, 40, 0, .5); transition: filter .2s, transform .15s; }
+.device.typing .lamp { filter: brightness(1.15) saturate(1.1); transform: translateY(1px); }
+.device.wrong .lamp { background: radial-gradient(circle at 34% 26%, #ffc0b8, #f0453a 40%, #c01f14 100%); animation: blinkLamp .5s 3; }
 
-.deck { height: 40px; border-radius: 10px; background: linear-gradient(180deg, #f0ede3, #ddd8ca); box-shadow: inset 0 1.5px 0 #fff, inset 0 0 0 1px rgba(90, 80, 55, .2), 0 1px 0 rgba(90, 80, 55, .15); }
-.slot { position: relative; height: 14px; border-radius: 7px; background: linear-gradient(180deg, #9a9a9a, #4a4d55); box-shadow: inset 0 2px 3px rgba(0, 0, 0, .6), 0 1px 0 rgba(255, 255, 255, .7); overflow: hidden; }
-.bolt { position: absolute; top: 2px; bottom: 2px; left: 8px; right: 8px; border-radius: 5px; background: linear-gradient(180deg, #f6f7fa, #aeb4c2); box-shadow: 0 1px 2px rgba(0, 0, 0, .4); transition: transform .8s var(--ease); }
-.device.open .bolt { transform: translateX(-88%); }
-.device.open .lamp { background: radial-gradient(circle at 36% 30%, #a9c2ff, #4a74f2 55%, #2543b8); }
+/* the big smooth front panel, with the slot and bolt near the bottom edge */
+.front { position: relative; height: 92px; border-radius: 16px; background: linear-gradient(180deg, #f5f2ea 0%, #e6e2d6 100%);
+  box-shadow: inset 0 2px 0 #fff, inset 0 -2px 3px rgba(88, 78, 52, .22), inset 0 0 0 1px rgba(88, 78, 52, .2), 0 1px 0 rgba(255, 255, 255, .6); }
+.front .slot { position: absolute; left: 16px; right: 16px; bottom: 14px; height: 18px; border-radius: 9px;
+  background: linear-gradient(180deg, #5c606a, #1e2026); box-shadow: 0 0 0 2px #d9dbe0, 0 0 0 3px #8d919c, 0 2px 0 3px rgba(255, 255, 255, .75), inset 0 3px 4px rgba(0, 0, 0, .7); overflow: hidden; }
+.bolt { position: absolute; top: 3px; bottom: 3px; left: 6px; right: 6px; border-radius: 6px; background: linear-gradient(180deg, #f7f8fb, #b7bdca); box-shadow: 0 1px 2px rgba(0, 0, 0, .5), inset 0 1px 0 #fff; transition: transform .8s var(--ease); }
+.device.open .bolt { transform: translateX(-90%); }
+.device.open .lamp { background: radial-gradient(circle at 34% 26%, #cfe0ff, #5a82f7 40%, #2a4fd0 100%); box-shadow: 0 4px 5px rgba(20, 40, 140, .5), inset 0 1px 1px rgba(255, 255, 255, .7); }
 .device.open .knob { transform: rotate(calc(var(--turn) + 360deg)); transition: transform .9s var(--ease); }
 .device.wrong .body { animation: knock .42s var(--ease); }
 @keyframes knock { 20% { translate: -8px 0; } 45% { translate: 7px 0; } 70% { translate: -4px 0; } }
@@ -84,5 +95,5 @@ label { display: grid; gap: 6px; font-size: 13px; font-weight: 500; }
 @keyframes shake { 20% { transform: translateX(-6px); } 45% { transform: translateX(5px); } 70% { transform: translateX(-3px); } }
 @media (prefers-reduced-motion: no-preference) { .stage.done .device { animation: lift .5s var(--ease) both; } @keyframes lift { 50% { transform: translateY(-8px); } } }
 @media (prefers-reduced-motion: reduce) { .device.wrong .lamp { animation: none; } }
-@media (max-height: 760px) { .stage { gap: 14px; } .clock time { font-size: 30px; } .clock p { display: none; } }
-@media (max-width: 440px) { .controls { gap: 10px; padding: 0 10px; } .knob { width: 44px; height: 44px; } }
+@media (max-height: 800px) { .stage { gap: 16px; } .clock time { font-size: 30px; } .clock p { display: none; } .device { width: min(440px, 94vw); } .front { height: 70px; } .inlay.grille { min-height: 90px; } }
+@media (max-width: 480px) { .controls { gap: 10px; padding: 8px 10px; } .knobwell { width: 60px; height: 60px; } .knob { width: 50px; height: 50px; } .lampwell { width: 32px; height: 32px; } .lamp { width: 22px; height: 22px; } .lcdDots { font-size: 22px; } .front { height: 70px; } .inlay.grille { min-height: 86px; } }
