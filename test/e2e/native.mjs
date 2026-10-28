@@ -88,6 +88,7 @@ try {
     assert.ok((await events()).some((e) => e.includes('helper is not running')), 'Activity says the helper was not used');
     const probe = await send({ type: 'probeHelper' });
     assert.deepEqual([probe.ok, probe.problem], [false, 'missing'], 'settings can tell it is not installed');
+    assert.equal((await send({ type: 'getStatus' })).helperNudge, true, 'the toolbar popup offers the helper after a lock that fell back');
     assert.equal((await send({ type: 'unlock', passcode: PASS })).ok, true);
     await until(async () => !(await flag()), 'unlocked');
     await W((i) => chrome.windows.remove(i), w);
@@ -116,8 +117,9 @@ try {
     await until(() => helperPids().length === 0, 'the check helper to quit again', 6000);
   });
   if (!realFile) writeFileSync(hostFile, manifest);
-  await check('the helper starts, says hello, and settings can see it', async () => {
+  await check('the helper starts, says hello, and settings can see it (and the popup stops offering it)', async () => {
     assert.equal((await send({ type: 'probeHelper' })).ok, true);
+    assert.equal((await send({ type: 'getStatus' })).helperNudge, false);
     await until(() => helperPids().length === 0, 'the probe helper to quit again', 6000);
   });
 

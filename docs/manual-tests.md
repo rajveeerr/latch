@@ -52,4 +52,4 @@ machine, and tell me what you see.
 - [ ] **Two displays**: lock with a window on each. Both are covered.
 - [ ] **Moved the folder**: move the Latch folder, reload Latch in `brave://extensions`. Settings say the helper is installed for another folder; double-click the installer again.
 - [ ] **Remove it**: double-click `Uninstall Latch Helper.command`. Latch locks on the page again and says so in Activity.
-
+- [ ] **First run on a Mac**: after the private-windows step, onboarding offers the helper ("Make it feel native"). Skip it, lock once: the toolbar popup then says *Locked on the page only. Get the Mac helper for a native lock*, and clicking it opens settings at How Latch locks. Install the helper and the note goes away.

@@ -36,6 +36,7 @@ async function render() {
   const dot = $('dot');
   dot.className = 'dot';
   aegis.set(!status.hasPasscode ? 'guard' : (!status.enabled || status.paused) ? 'sleep' : 'guard');
+  $('helperNotice').hidden = !status.helperNudge;
   $('notice').hidden = !(status.failedSinceUnlock > 0);
   if (status.failedSinceUnlock > 0) {
     $('noticeText').textContent = status.failedSinceUnlock === 1
@@ -64,6 +65,7 @@ const openSettings = (hash = '') => { chrome.tabs.create({ url: chrome.runtime.g
 $('openSetup').onclick = () => openSettings();
 $('settings').onclick = () => openSettings();
 $('notice').onclick = () => openSettings('#activity');
+$('helperNotice').onclick = () => openSettings('#how');
 $('lock').onclick = async () => {
   const result = await send({ type: 'lock' });
   if (!result.ok) { $('error').textContent = result.error === 'incognito-not-allowed' ? 'Allow Latch in private windows first.' : 'Could not lock. Please try again.'; return; }

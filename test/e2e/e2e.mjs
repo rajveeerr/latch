@@ -74,6 +74,12 @@ try {
   await options.check('#recoverySaved');
   await options.click('#recoveryDone');
   await options.waitForSelector('#obPrivate:not([hidden])');       // onboarding carries on to private windows
+  if (process.platform === 'darwin') {                              // then, on a Mac, offers the helper
+    await options.click('#obNextPrivate');
+    await options.waitForSelector('#obHelper:not([hidden])');
+    assert.ok((await options.textContent('#obHelper')).includes('Install Latch Helper'), 'the step says how to install it');
+    assert.equal(await options.isVisible('#obNextHelper'), true, 'and can be skipped');
+  }
   await options.click('#obSkip');
   await options.waitForSelector('#content:not([hidden])');
   ok('first run: onboarding sets a passcode, then a recovery code that must be acknowledged');
