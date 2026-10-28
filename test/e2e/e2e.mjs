@@ -63,6 +63,7 @@ try {
   // The install opens the settings page by itself.
   const options = context.pages().find((p) => p.url().includes('options.html')) || await context.newPage();
   if (!options.url().includes('options.html')) await options.goto(ext('ui/options.html'));
+  await options.click('#obStart');                                  // meet Kerby, then choose a passcode
   await options.fill('#newPasscode', PASS);
   await options.fill('#repeatPasscode', PASS);
   await options.click('#savePasscode');
@@ -72,14 +73,19 @@ try {
   assert.equal(await options.isDisabled('#recoveryDone'), true, 'cannot continue before confirming the code is saved');
   await options.check('#recoverySaved');
   await options.click('#recoveryDone');
+  await options.waitForSelector('#obPrivate:not([hidden])');       // onboarding carries on to private windows
+  await options.click('#obSkip');
   await options.waitForSelector('#content:not([hidden])');
-  ok('first run: passcode set, then a recovery code that must be acknowledged');
+  ok('first run: onboarding sets a passcode, then a recovery code that must be acknowledged');
+  // The checks below are about the separate lock window, so choose that style (the overlay has its own scenarios in windows.mjs).
+  await options.evaluate(async (pass) => chrome.runtime.sendMessage({ type: 'saveSettings', settings: { ...(await chrome.runtime.sendMessage({ type: 'getSettings' })).settings, lockStyle: 'window' }, passcode: pass }), PASS);
+  await options.reload(); await options.waitForSelector('#content:not([hidden])');      // so the form shows the style that is now saved
 
   // A page that is playing sound with an unsaved draft.
   const page = await context.newPage();
   await page.goto(site);
   await page.fill('#draft', 'unsaved draft text');
-  await until(() => page.evaluate(() => !document.getElementById('a').paused), 'audio to start playing');
+  await until(() => page.evaluate(async () => { const a = document.getElementById('a'); if (a.paused) await a.play().catch(() => {}); return !a.paused; }), 'audio to start playing', 15000);
   const tabsBefore = context.pages().map((p) => p.url()).filter((u) => !u.includes('lock.html')).sort();
   ok('sample page is playing audio with a half-typed draft');
 
@@ -94,6 +100,8 @@ try {
   ok('loosening a setting asks for the passcode, then saves by itself');
 
   // Lock.
+  await page.bringToFront();
+  const windowBefore = await worker.evaluate(async () => (await chrome.windows.getLastFocused()).id);
   await options.evaluate(() => chrome.runtime.sendMessage({ type: 'lock' }));
   const lock = await until(lockPage, 'lock window to open');
   await until(() => page.evaluate(() => document.getElementById('a').paused), 'audio to pause');
@@ -124,16 +132,22 @@ try {
   // Wrong passcode, then right.
   const lock2 = lockPage();
   await lock2.fill('#passcode', 'nope');
+  assert.equal(await lock2.evaluate(() => getComputedStyle(document.getElementById('dialVisual')).getPropertyValue('--turn').trim()), '100.0deg', 'the knob turns a notch per character');
   await lock2.click('#unlock');
   await lock2.waitForFunction(() => document.getElementById('error').textContent.includes('Wrong'));
+  await lock2.waitForSelector('#dialVisual.wrong');
   assert.ok(lockPage());
-  ok('a wrong passcode is refused');
+  ok('a wrong passcode is refused, and the lock rejects it');
 
   await lock2.fill('#passcode', PASS);
   await lock2.click('#unlock');
   await until(() => !lockPage(), 'lock window to close after unlocking');
   await until(() => page.evaluate(() => document.documentElement.lastElementChild.getAttribute('popover') !== 'manual'), 'cover to go away');
-  ok('the right passcode unlocks and removes the cover');
+  const windowAfter = await worker.evaluate(async () => (await chrome.windows.getLastFocused()).id);
+  assert.equal(windowAfter, windowBefore, 'focus returns to the window you were using');
+  const leftover = await worker.evaluate(async () => (await chrome.windows.getAll({ windowTypes: ['popup'] })).length);
+  assert.equal(leftover, 0, 'the lock window is gone');
+  ok('the right passcode unlocks, removes the cover, closes the lock window and returns focus to your window');
 
   // Nothing was lost.
   const tabsAfter = context.pages().map((p) => p.url()).filter((u) => !u.includes('lock.html')).sort();
@@ -223,6 +237,80 @@ try {
   assert.equal(await settings2.isDisabled('#lockNow'), true);
   await options.evaluate(async (pass) => chrome.runtime.sendMessage({ type: 'saveSettings', settings: { ...(await chrome.runtime.sendMessage({ type: 'getSettings' })).settings, scope: 'profile' }, passcode: pass }), PASS);
   ok('private-windows-only mode says so when it cannot work, instead of showing "protecting"');
+
+  // ---------- previewing a style from Settings never touches the real lock ----------
+  const previewPage = await context.newPage();
+  await previewPage.goto(ext('ui/lock.html#preview'));
+  await previewPage.fill('#passcode', 'wrong');
+  await previewPage.click('#unlock');
+  await previewPage.waitForFunction(() => document.getElementById('error').textContent.includes('Wrong'));
+  await previewPage.fill('#passcode', 'anything');
+  await previewPage.click('#unlock');
+  await previewPage.waitForSelector('.stage.done');
+  const afterPreview = await worker.evaluate(async () => (await chrome.storage.local.get('state')).state.locked);
+  assert.equal(afterPreview, false, 'previewing does not lock anything');
+  await previewPage.close();
+  ok('the lock-screen preview is a safe demo that never locks or logs anything');
+
+  // ---------- appearance: the lock screen layout and the mascot are real choices ----------
+  await settings2.reload();
+  await settings2.click('#layoutPicker .pick[data-layout="card"]');
+  await settings2.click('#mascotPicker .pick[data-mascot="kerby"]');
+  await settings2.waitForSelector('#heroArt svg.kerby');
+  assert.equal(await settings2.getAttribute('#mascotPicker .pick[data-mascot="kerby"]', 'aria-checked'), 'true');
+  assert.equal(await settings2.locator('#mascotPicker .pick svg').count(), 2, 'each mascot card shows a live preview of that mascot');
+  await options.evaluate(() => chrome.runtime.sendMessage({ type: 'lock' }));
+  const lockC = await until(lockPage, 'lock window in the card layout');
+  await lockC.waitForSelector('#cardVisual', { state: 'visible' });
+  assert.equal(await lockC.isVisible('#dialVisual'), false, 'only the chosen layout shows');
+  assert.equal(await lockC.textContent('#cardName'), 'Kerby');
+  await lockC.waitForSelector('#mascotSlot svg.kerby');
+  await lockC.fill('#passcode', 'abc');
+  assert.equal(await lockC.getAttribute('svg.kerby', 'data-state'), 'typing', 'the mascot reacts while you type');
+  await lockC.fill('#passcode', PASS);
+  await lockC.click('#unlock');
+  await until(() => !lockPage(), 'unlock from the card layout');
+  await settings2.click('#mascotPicker .pick[data-mascot="none"]');
+  await settings2.waitForFunction(() => document.getElementById('overview').hasAttribute('data-nomascot'));
+  await options.evaluate(() => chrome.runtime.sendMessage({ type: 'lock' }));
+  const lockN = await until(lockPage, 'lock window with no mascot');
+  await lockN.waitForSelector('#cardVisual', { state: 'visible' });
+  assert.equal(await lockN.textContent('#cardName'), 'Latch', 'with no mascot the card is just Latch');
+  assert.equal(await lockN.locator('#mascotSlot svg').count(), 0, 'and no mascot is drawn');
+  await lockN.fill('#passcode', PASS);
+  await lockN.click('#unlock');
+  await until(() => !lockPage(), 'unlock with no mascot');
+  await settings2.click('#layoutPicker .pick[data-layout="device"]');
+  await settings2.click('#mascotPicker .pick[data-mascot="aegis"]');
+  ok('lock-screen layout and mascot can be chosen (Kerby, Aegis or none), and the lock screen follows the choice');
+
+  // How it locks: the native helper is the default, and the choice is saved like any other setting.
+  await options.bringToFront(); await options.reload(); await options.waitForSelector('#content:not([hidden])');
+  const styleOf = () => options.evaluate(async () => (await chrome.runtime.sendMessage({ type: 'getSettings' })).settings.lockStyle);
+  await options.waitForSelector('#styleNative', { state: 'attached' });
+  assert.equal(await options.isChecked('#styleWindow'), true, 'the form shows the style this run pinned');
+  await options.click('label.choice:has(#styleNative)');
+  await options.fill('#authPasscode', PASS); await options.press('#authPasscode', 'Enter');      // leaving the lock window is a loosening: the passcode bar asks
+  await until(async () => (await styleOf()) === 'native', 'the native helper style to be saved');
+  assert.equal(await options.isVisible('#helperCard'), true, 'the helper card shows when the native style is chosen');
+  await options.click('label.choice:has(#styleWindow)');
+  await until(async () => (await styleOf()) === 'window', 'the lock-window style to be saved');
+  assert.equal(await options.isVisible('#helperCard'), false);
+  ok('how it locks can be chosen (native helper, on the page, separate window), and the helper card shows only for the helper');
+
+  // Loosening how it locks needs the passcode, from the separate lock window to anything else included (the helper falls back to
+  // the in-page overlay when it is not installed).
+  const trySave = (lockStyle, passcode) => options.evaluate(async ([style, pass]) => chrome.runtime.sendMessage({ type: 'saveSettings', settings: { ...(await chrome.runtime.sendMessage({ type: 'getSettings' })).settings, lockStyle: style }, passcode: pass }), [lockStyle, passcode]);
+  assert.equal((await trySave('window', undefined)).ok, true, 'saved: the lock window itself');
+  for (const loosened of ['native', 'overlay']) {
+    const refused = await trySave(loosened, undefined);
+    assert.equal(refused.ok, false, `leaving the lock window for ${loosened} is refused without the passcode`);
+    assert.equal(refused.needPasscode, true);
+    assert.equal((await trySave(loosened, 'not the passcode')).ok, false, 'and refused with a wrong one');
+    assert.equal(await styleOf(), 'window', 'nothing changed');
+  }
+  assert.equal((await trySave('native', PASS)).ok, true, 'allowed with the passcode');
+  ok('loosening how it locks (leaving the lock window) is refused without the passcode, and allowed with it');
 
   console.log(`\nAll ${step} checks passed.`);
 } catch (err) {

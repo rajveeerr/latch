@@ -1,0 +1,59 @@
+/* Aegis: marble, cobalt engraving, a golden crest. The colours are the same in light and dark. */
+.aegis { --marble: url(#marble); --ink: #1d3ac0; --navy: #14224f; --blush: #f0a79d; --cape: #3556e0;
+  display: block; width: 100%; height: auto; overflow: visible; }
+.aegis .line { stroke: var(--ink); stroke-width: 2.4; stroke-linejoin: round; stroke-linecap: round; }
+.aegis .line.thin { fill: none; stroke-width: 1.6; } .aegis .line.soft { opacity: .45; }
+.aegis .shaft { fill: none; stroke-width: 5; stroke: #8a6a22; }
+.aegis .ground { fill: #14171f; opacity: .12; }
+.aegis .ring { stroke-width: 2; } .aegis .emblem { fill: none; stroke: #f6e3a8; stroke-width: 8; stroke-linecap: round; stroke-linejoin: round; } .aegis .emblem-fill { fill: #f6e3a8; }
+.aegis .studs circle { fill: #f6e3a8; }
+.aegis .crest { transform-box: view-box; transform-origin: 200px 72px; }
+.aegis .plume { stroke: var(--ink); stroke-width: 2.2; stroke-linejoin: round; }
+.aegis .crest-base { stroke: var(--ink); stroke-width: 2.2; stroke-linejoin: round; }
+.aegis .blush { fill: var(--blush); opacity: .38; }
+.aegis .eye-white { fill: #fff; stroke: var(--ink); stroke-width: 2; } .aegis .ink { fill: var(--navy); } .aegis .glint { fill: #fff; }
+.aegis .pupil { transition: transform .12s ease-out; }
+.aegis .lid { transform-box: fill-box; transform-origin: 50% 0; transform: scaleY(0); transition: transform .14s ease-out; }
+.aegis .happy-eye, .aegis .sleep-eye { fill: none; stroke: var(--navy); stroke-width: 5; stroke-linecap: round; opacity: 0; }
+.aegis .brow { fill: none; stroke: var(--navy); stroke-width: 7; stroke-linecap: round; transform-box: fill-box; transform-origin: center; transition: transform .22s cubic-bezier(.16,1,.3,1); }
+.aegis .nose { fill: #e6a392; stroke: var(--ink); stroke-width: 1.6; stroke-linejoin: round; }
+.aegis .mouth { fill: none; stroke: var(--navy); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; transition: opacity .15s; }
+.aegis .mouth-growl, .aegis .mouth-happy { opacity: 0; } .aegis .mouth-growl { fill: #fff; stroke-width: 3.2; } .aegis .mouth-happy { fill: #f08a8a; }
+.aegis .zzz { opacity: 0; fill: none; stroke: var(--ink); stroke-width: 4.5; stroke-linecap: round; stroke-linejoin: round; transition: opacity .3s; }
+.aegis .shield-wrap { transform: translate(94px, 318px); transition: transform .38s cubic-bezier(.16,1,.3,1); }
+.aegis .shield { transform-origin: 0 0; }
+.aegis .spear { transform-box: view-box; transform-origin: 330px 316px; transition: transform .36s cubic-bezier(.16,1,.3,1); }
+.aegis .head { transform-origin: 200px 300px; transition: transform .35s cubic-bezier(.16,1,.3,1); }
+.aegis .arm-l { transition: opacity .2s; }
+
+/* poses */
+.aegis.blink .lid { transform: scaleY(1); }
+.aegis[data-state="guard"] .brow-a { transform: rotate(-4deg); } .aegis[data-state="guard"] .brow-b { transform: rotate(4deg); }
+.aegis[data-state="typing"] .shield-wrap { transform: translate(200px, 160px) scale(1.06); }
+.aegis[data-state="typing"] .arm-l { opacity: 0; }
+.aegis[data-state="peek"] .shield-wrap { transform: translate(200px, 262px) scale(1.04); }
+.aegis[data-state="peek"] .arm-l { opacity: 0; }
+.aegis[data-state="peek"] .eye .pupil { transform: translateY(2px) scale(1.15); }
+.aegis[data-state="growl"] .brow-a { transform: rotate(14deg) translateY(2px); } .aegis[data-state="growl"] .brow-b { transform: rotate(-14deg) translateY(2px); }
+.aegis[data-state="growl"] .mouth-guard { opacity: 0; } .aegis[data-state="growl"] .mouth-growl { opacity: 1; }
+.aegis[data-state="growl"] .blush { opacity: .7; }
+.aegis[data-state="growl"] .spear { transform: rotate(-9deg) translateX(-6px); }
+.aegis[data-state="happy"] .ink, .aegis[data-state="happy"] .glint { opacity: 0; } .aegis[data-state="happy"] .eye-white { opacity: 0; }
+.aegis[data-state="happy"] .happy-eye { opacity: 1; }
+.aegis[data-state="happy"] .mouth-guard { opacity: 0; } .aegis[data-state="happy"] .mouth-happy { opacity: 1; }
+.aegis[data-state="happy"] .brow { transform: translateY(-4px); }
+.aegis[data-state="happy"] .spear { transform: translateY(-46px) rotate(4deg); }
+.aegis[data-state="sleep"] .lid { transform: scaleY(1); } .aegis[data-state="sleep"] .sleep-eye { opacity: 1; } .aegis[data-state="sleep"] .zzz { opacity: 1; }
+.aegis[data-state="sleep"] .head { transform: rotate(7deg) translateY(10px); }
+.aegis[data-state="sleep"] .brow { transform: translateY(6px); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .aegis .crest { animation: sway 3.6s ease-in-out infinite; }
+  .aegis[data-state="happy"] { animation: hop .5s cubic-bezier(.16,1,.3,1) 1; }
+  .aegis.shake { animation: grr .42s ease-in-out 1; }
+  .aegis[data-state="sleep"] .zzz { animation: float 3s ease-in-out infinite; }
+  @keyframes sway { 50% { transform: rotate(3deg); } }
+  @keyframes hop { 40% { transform: translateY(-14px); } }
+  @keyframes grr { 20% { transform: translateX(-6px); } 45% { transform: translateX(6px); } 70% { transform: translateX(-3px); } }
+  @keyframes float { 50% { transform: translateY(-6px); } }
+}

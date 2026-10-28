@@ -1,9 +1,65 @@
 import { b64u } from '../src/lib/webauthn.js';
+import { mountDial } from './lockdial.js';
+import { mountMascot, MASCOTS } from './mascot.js';
+import { mountScene } from './scene.js';
 
 const $ = (id) => document.getElementById(id);
 const send = (message) => chrome.runtime.sendMessage(message);
 const form = $('form'), input = $('passcode'), button = $('unlock');
 let countdown;
+let calmTimer;
+const preview = location.hash === '#preview';       // opened from Settings: nothing real happens here
+const embed = location.hash === '#embed';           // shown inside the cover on a locked page: no window of its own to fit or close
+
+// Two layouts share everything except the picture: a physical combination lock, or a trading card with the chosen
+// mascot on it. Either way "pet" is whatever reacts to what you do (typing, a wrong guess, a right one).
+const layout = document.documentElement.dataset.lockLayout;
+let pet;
+if (layout === 'card') {
+  const mascot = mountMascot($('mascotSlot'), { state: 'guard', track: false });   // one pointer handler below drives tilt and eyes
+  const meta = MASCOTS[mascot.id];
+  mountScene($('sceneSlot'));
+  $('cardName').textContent = meta.name;
+  $('cardRole').textContent = meta.role;
+  for (const [value, label] of meta.stats) {
+    const cell = document.createElement('div');
+    const dd = document.createElement('dd'), dt = document.createElement('dt');
+    dd.textContent = value; dt.textContent = label;
+    cell.append(dd, dt);
+    $('cardStats').append(cell);
+  }
+  pet = { set: (next) => mascot.set(next), turn() {}, lookAt: (x, y) => mascot.lookAt(x, y) };
+} else {
+  const dial = mountDial($('dialVisual'));
+  let current = 'guard';
+  pet = {
+    set(next) {
+      if (next === current) return;
+      current = next;
+      if (next === 'growl') dial.wrong();
+      else if (next === 'happy') dial.open();
+      else if (next === 'guard') dial.calm();
+    },
+    turn: (length) => dial.turn(length),
+    lookAt() {},
+  };
+}
+const calm = (after = 0) => { clearTimeout(calmTimer); calmTimer = setTimeout(() => pet.set(document.activeElement === input && input.value ? 'typing' : 'guard'), after); };
+
+// the lock tilts a touch toward the pointer
+const visual = layout === 'card' ? $('cardVisual') : $('dialVisual');
+if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  let raf = 0;
+  window.addEventListener('pointermove', (event) => {
+    if (raf) return;
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      visual.style.setProperty('--mx', (event.clientX / innerWidth * 2 - 1).toFixed(3));
+      visual.style.setProperty('--my', (event.clientY / innerHeight * 2 - 1).toFixed(3));
+      pet.lookAt(event.clientX, event.clientY);
+    });
+  }, { passive: true });
+}
 let pendingPasscode = '';        // the passcode just set by a reset, used to unlock afterwards
 
 // ---------- clock ----------
@@ -30,9 +86,14 @@ tickClock();
 function show(view) {
   for (const id of ['viewUnlock', 'viewRecover', 'viewRecovered']) $(id).hidden = id !== view;
   const focus = { viewUnlock: input, viewRecover: $('recoveryCode'), viewRecovered: $('savedCode') }[view];
+  pet.set(view === 'viewRecovered' ? 'happy' : 'guard');
   focus.focus();
 }
 $('forgot').addEventListener('click', () => show('viewRecover'));
+for (const id of ['newPass', 'newPass2']) {
+  $(id).addEventListener('input', () => pet.set($(id).value ? 'typing' : 'guard'));
+  $(id).addEventListener('blur', () => pet.set('guard'));
+}
 $('backToUnlock').addEventListener('click', () => show('viewUnlock'));
 
 // show / hide on every passcode field
@@ -42,10 +103,14 @@ for (const reveal of document.querySelectorAll('.reveal')) {
     const showing = field.type === 'password';
     field.type = showing ? 'text' : 'password';
     reveal.setAttribute('aria-label', showing ? 'Hide passcode' : 'Show passcode');
+    if (field === input) pet.set(showing ? 'peek' : (input.value ? 'typing' : 'guard'));
     reveal.querySelector('use').setAttribute('href', showing ? 'icons.svg#eye-off' : 'icons.svg#eye');
     field.focus();
   });
 }
+input.addEventListener('input', () => { pet.set(input.type === 'text' ? 'peek' : (input.value ? 'typing' : 'guard')); pet.turn(input.value.length); });
+input.addEventListener('focus', () => { if (input.value) pet.set(input.type === 'text' ? 'peek' : 'typing'); });
+input.addEventListener('blur', () => pet.set('guard'));
 const caps = (event) => { $('caps').hidden = !event.getModifierState?.('CapsLock'); };
 input.addEventListener('keydown', caps);
 input.addEventListener('keyup', caps);
@@ -53,10 +118,11 @@ window.addEventListener('focus', () => { if (!$('viewUnlock').hidden && !input.d
 
 // ---------- feedback ----------
 function fail(message) {
+  pet.set('growl'); calm(1500);
   $('error').textContent = '';
   requestAnimationFrame(() => { $('error').textContent = message; });     // re-announced each time
   input.setAttribute('aria-invalid', 'true');
-  const content = document.querySelector('.content');
+  const content = document.querySelector('.panel');
   content.classList.remove('shake'); void content.offsetWidth; content.classList.add('shake');
   input.focus(); input.select();
 }
@@ -85,33 +151,50 @@ function showWait(ms) {
 }
 
 function done(method) {
-  document.querySelector('.content').classList.add('done');
+  pet.set('happy');
+  document.querySelector('.panel').classList.add('done');
+  document.querySelector('.stage').classList.add('done');
   $('title').textContent = 'Unlocked';
   $('reason').textContent = 'Restoring your windows…';
   button.disabled = true;
   // If the window does not close by itself, never leave the person stuck here.
+  if (embed) return void ($('reason').textContent = 'Welcome back.');
   setTimeout(() => { $('reason').textContent = 'You can close this window.'; button.disabled = false; }, 3000);
 }
 
 async function init() {
+  if (!preview && !embed && location.hash !== '#small') send({ type: 'fitLockWindow', left: screen.availLeft ?? 0, top: screen.availTop ?? 0, width: screen.availWidth, height: screen.availHeight }).catch(() => {});
+  if (preview) {
+    $('title').textContent = 'Lock screen preview';
+    $('reason').textContent = 'Nothing is locked. Type anything and press Unlock, or type “wrong”.';
+    document.querySelector('.alts').hidden = true;
+    return;
+  }
   const status = await send({ type: 'getStatus' });
   if (status.reason) $('reason').textContent = status.reason + '.';
   if (status.scope === 'private') $('footText').textContent = 'Only your private windows are locked. Everything else stays open.';
   if (status.retryAfterMs) showWait(status.retryAfterMs);
   // A reset already retired the old recovery code, so a new one must not be lost if this window was closed too soon.
-  const { pendingRecovery } = await chrome.storage.session.get('pendingRecovery');
-  if (pendingRecovery) { $('newCode').textContent = pendingRecovery; show('viewRecovered'); }
   if (status.touchId && window.PublicKeyCredential) {
     try {
       if (await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()) $('touchId').hidden = false;
     } catch { /* leave it hidden */ }
   }
+  if (embed) parent.postMessage({ latch: 'ready' }, '*');
 }
 
 // ---------- unlock with the passcode ----------
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
   if (button.disabled) return;
+  if (preview) {                                        // a safe demo of both reactions
+    if (!input.value) return fail('Type anything to see it react, or “wrong” to see the other reaction.');
+    const wrong = input.value.toLowerCase() === 'wrong';
+    input.value = ''; pet.turn(0);
+    if (wrong) return fail('Wrong passcode. Try again.');
+    done();
+    return void setTimeout(() => location.reload(), 2600);
+  }
   if (!input.value) return fail('Type your passcode.');
   button.disabled = true;
   const result = await send({ type: 'unlock', passcode: input.value });
@@ -125,6 +208,8 @@ form.addEventListener('submit', async (event) => {
 // ---------- unlock with Touch ID ----------
 $('touchId').addEventListener('click', async () => {
   $('error').textContent = '';
+  // Touch ID is tied to this page's own address, which differs inside a locked page, so it opens the small unlock window.
+  if (embed) return void send({ type: 'openUnlockWindow' });
   try {
     const begin = await send({ type: 'touchIdChallenge' });
     if (!begin.ok) return fail('Touch ID is not set up. Use your passcode.');
@@ -167,7 +252,6 @@ $('recoverForm').addEventListener('submit', async (event) => {
     return;
   }
   pendingPasscode = a;
-  await chrome.storage.session.set({ pendingRecovery: result.recoveryCode });
   for (const id of ['recoveryCode', 'newPass', 'newPass2']) $(id).value = '';
   error.textContent = '';
   $('newCode').textContent = result.recoveryCode;
@@ -181,7 +265,6 @@ $('copyCode').addEventListener('click', async () => {
 $('savedCode').addEventListener('change', () => { $('finish').disabled = !$('savedCode').checked; });
 $('finish').addEventListener('click', async () => {
   $('finish').disabled = true;
-  await chrome.storage.session.remove('pendingRecovery');
   const passcode = pendingPasscode;
   pendingPasscode = '';
   show('viewUnlock');

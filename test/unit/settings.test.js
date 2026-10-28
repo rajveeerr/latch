@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULTS, normalizeSettings, isWeakening, covers } from '../../src/lib/settings.js';
+import { DEFAULTS, normalizeSettings, isWeakening, covers, overlayStyle } from '../../src/lib/settings.js';
 
 test('missing or garbage input falls back to defaults', () => {
   assert.deepEqual(normalizeSettings(undefined), DEFAULTS);
@@ -52,4 +52,31 @@ test('"everything" covers every window; "private only" covers only private ones'
   assert.equal(covers(privateOnly, { incognito: false }), false);
   assert.equal(covers(privateOnly, { incognito: true }), true);
   assert.equal(covers(privateOnly, {}), false, 'unknown is treated as not private');
+});
+
+test('lock style: the native helper by default, a bad value falls back, and moving to the in-page overlay counts as weakening', () => {
+  assert.equal(DEFAULTS.lockStyle, 'native');
+  assert.equal(normalizeSettings({ lockStyle: 'window' }).lockStyle, 'window');
+  assert.equal(normalizeSettings({ lockStyle: 'overlay' }).lockStyle, 'overlay');
+  assert.equal(normalizeSettings({ lockStyle: 'sideways' }).lockStyle, 'native');
+  assert.equal(isWeakening(DEFAULTS, { ...DEFAULTS, lockStyle: 'overlay' }), true);
+  assert.equal(isWeakening({ ...DEFAULTS, lockStyle: 'window' }, { ...DEFAULTS, lockStyle: 'overlay' }), true);
+  assert.equal(isWeakening({ ...DEFAULTS, lockStyle: 'overlay' }, DEFAULTS), false);
+  assert.equal(isWeakening(DEFAULTS, { ...DEFAULTS, lockStyle: 'window' }), false);
+  assert.equal(isWeakening({ ...DEFAULTS, lockStyle: 'window' }, DEFAULTS), true, 'the helper falls back to the overlay without the helper installed');
+  assert.equal(isWeakening({ ...DEFAULTS, lockStyle: 'window' }, { ...DEFAULTS, lockStyle: 'overlay' }), true);
+});
+
+test('helper Touch ID: off by default, a bad value is ignored, and switching it on counts as loosening', () => {
+  assert.equal(DEFAULTS.helperTouchId, false);
+  assert.equal(normalizeSettings({ helperTouchId: 'yes' }).helperTouchId, false);
+  assert.equal(normalizeSettings({ helperTouchId: true }).helperTouchId, true);
+  assert.equal(isWeakening(DEFAULTS, { ...DEFAULTS, helperTouchId: true }), true);
+  assert.equal(isWeakening({ ...DEFAULTS, helperTouchId: true }, DEFAULTS), false);
+});
+
+test('the overlay needs the page cover: without it the lock window is used', () => {
+  assert.equal(overlayStyle(DEFAULTS), true);                                   // native falls back to the overlay
+  assert.equal(overlayStyle({ ...DEFAULTS, coverPages: false }), false);
+  assert.equal(overlayStyle({ ...DEFAULTS, lockStyle: 'window' }), false);
 });

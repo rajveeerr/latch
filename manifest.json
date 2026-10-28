@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Latch",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Lock this browser profile behind a passcode. Covers pages, hides windows and pauses media. Never closes or changes your tabs.",
   "minimum_chrome_version": "114",
   "icons": {
@@ -19,11 +19,22 @@
     "service_worker": "src/background.js",
     "type": "module"
   },
-  "permissions": ["storage", "idle", "alarms"],
+  "permissions": [
+    "storage",
+    "idle",
+    "alarms",
+    "scripting",
+    "tabGroups",
+    "nativeMessaging"
+  ],
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["src/cover.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "src/cover.js"
+      ],
       "run_at": "document_start",
       "all_frames": true,
       "match_about_blank": true
@@ -31,8 +42,25 @@
   ],
   "commands": {
     "lock-now": {
-      "suggested_key": { "default": "Ctrl+Shift+L", "mac": "MacCtrl+Shift+L" },
+      "suggested_key": {
+        "default": "Ctrl+Shift+L",
+        "mac": "MacCtrl+Shift+L"
+      },
       "description": "Lock this profile now"
     }
-  }
+  },
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "ui/lock.html"
+      ],
+      "matches": [
+        "<all_urls>"
+      ],
+      "use_dynamic_url": true
+    }
+  ]
 }

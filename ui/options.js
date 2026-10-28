@@ -1,14 +1,20 @@
-import { mountMechanism } from './mechanism.js';
+import { mountMascot, getMascot, setMascot, getLayout, setLayout } from './mascot.js';
+import { mountAegis } from './aegis.js';
+import { mountKerby } from './kerby.js';
+import { mountScene } from './scene.js';
 import { b64u } from '../src/lib/webauthn.js';
 
 const $ = (id) => document.getElementById(id);
 const send = (message) => chrome.runtime.sendMessage(message);
-const BOOLEANS = ['skipWhileAudio', 'lockOnStartup', 'lockOnSystemLock', 'minimizeWindows', 'coverPages', 'pauseMedia', 'muteTabs'];
+const BOOLEANS = ['helperTouchId', 'skipWhileAudio', 'lockOnStartup', 'lockOnSystemLock', 'minimizeWindows', 'coverPages', 'pauseMedia', 'muteTabs'];
 const NUMBERS = ['autoLockMinutes', 'blurLockMinutes'];
 
 let saved = null;            // settings exactly as the background has them
 let status = null;
-let mechanism = null;
+let helperChecked = false;
+let aegis = null;            // the overview mascot
+let obAegis = null;          // the onboarding mascot
+let obActive = false;        // first run: the stepped flow is showing
 let pauseMinutes = 15;
 let touchAvailable = false;
 let toastTimer;
@@ -16,7 +22,11 @@ let toastTimer;
 const isMac = /Mac/.test(navigator.platform);
 for (const el of document.querySelectorAll('.shortcut')) el.textContent = isMac ? '⌃⇧L' : 'Ctrl+Shift+L';
 $('version').textContent = chrome.runtime.getManifest().version;
-navigator.brave?.isBrave?.().then((isBrave) => { if (isBrave) for (const el of document.querySelectorAll('.scheme')) el.textContent = 'brave'; });
+const braveCheck = Promise.resolve(navigator.brave?.isBrave?.()).then((isBrave) => {
+  send({ type: 'setBrowser', brave: Boolean(isBrave) });          // the worker cannot ask the page itself, so it is told here
+  if (isBrave) for (const el of document.querySelectorAll('.scheme')) el.textContent = 'brave';
+  return Boolean(isBrave);
+}).catch(() => false);
 
 // ---------- feedback ----------
 function toast(text, kind = '') {
@@ -44,6 +54,7 @@ function explain(result) {
 // ---------- the passcode bar: any change that weakens protection asks here, in place ----------
 let gate = null;
 function askPasscode(label, apply, onCancel) {
+  if (gate?.onCancel) gate.onCancel();         // a gate that is replaced is cancelled: its form control goes back to what is saved
   gate = { apply, onCancel };
   $('authLabel').textContent = label;
   $('authError').textContent = '';
@@ -78,6 +89,11 @@ function readForm() {
   for (const k of BOOLEANS) s[k] = $(k).checked;
   for (const k of NUMBERS) s[k] = Number($(k).value || 0);
   s.scope = document.querySelector('input[name="scope"]:checked')?.value || saved.scope;
+  s.lockWindow = $('lockFullscreen').checked ? 'fullscreen' : 'fill';
+  s.lockStyle = document.querySelector('input[name="lockStyle"]:checked')?.value || saved.lockStyle;
+  // Off a Mac the helper row is hidden and the form shows the overlay for a saved 'native'. Do not turn that display into a saved change.
+  if (!(status && status.mac) && saved.lockStyle === 'native' && s.lockStyle === 'overlay') s.lockStyle = 'native';
+  s.hideMode = $('hideStrict').checked ? 'close' : 'minimize';
   return s;
 }
 
@@ -85,6 +101,14 @@ function writeForm(s) {
   for (const k of BOOLEANS) $(k).checked = s[k];
   for (const k of NUMBERS) $(k).value = s[k] || '';       // zero reads as an empty box, not a stray "0 min"
   $(s.scope === 'private' ? 'scopePrivate' : 'scopeProfile').checked = true;
+  $('lockFullscreen').checked = s.lockWindow === 'fullscreen';
+  const mac = Boolean(status && status.mac);
+  $('styleNativeRow').hidden = !mac;                               // the helper is a Mac program
+  const style = s.lockStyle === 'native' && !mac ? 'overlay' : s.lockStyle;
+  $({ native: 'styleNative', overlay: 'styleOverlay', window: 'styleWindow' }[style]).checked = true;
+  renderHow();
+  if (mac && style === 'native' && !helperChecked) { helperChecked = true; checkHelper(); }       // say right away whether it is installed
+  $('hideStrict').checked = s.hideMode === 'close';
   syncChips();
 }
 
@@ -135,12 +159,13 @@ function renderOverview() {
   $('turnOff').textContent = saved.enabled ? 'Turn off' : 'Turn on';
   $('turnOff').hidden = !status.hasPasscode;
   if (!status.hasPasscode || !saved.enabled || status.paused) $('pauseChoice').hidden = true;
-  mechanism.set(Boolean(status.locked), true);
+  aegis.set(!status.hasPasscode || !saved.enabled || status.paused ? 'sleep' : 'guard');
 }
 
 // ---------- first-run checklist ----------
 async function renderSetup() {
-  const { setupHidden } = await chrome.storage.local.get('setupHidden');
+  const { setupHidden, onboarded } = await chrome.storage.local.get(['setupHidden', 'onboarded']);
+  if (onboarded) { $('setupCard').hidden = true; return; }          // onboarding already covered all of this
   const { recoveryAck } = await chrome.storage.local.get('recoveryAck');
   const card = $('setupCard');
   const first = !status.hasPasscode;
@@ -194,6 +219,101 @@ async function saveSettings(passcode = '') {
 
 for (const k of BOOLEANS) $(k).addEventListener('change', () => saveSettings());
 for (const radio of document.querySelectorAll('input[name="scope"]')) radio.addEventListener('change', () => saveSettings());
+// The two lock-window switches are alternatives: turning one on turns the other off.
+$('lockFullscreen').addEventListener('change', () => saveSettings());
+for (const radio of document.querySelectorAll('input[name="lockStyle"]')) radio.addEventListener('change', () => {
+  renderHow();
+  if (readForm().lockStyle === 'native') checkHelper();
+  saveSettings();
+});
+$('checkHelper').addEventListener('click', () => checkHelper());
+$('openLatchPage').addEventListener('click', () => send({ type: 'openIncognitoSettings' }));   // Latch's own page in the extensions list
+
+// ---------- how it locks: what is chosen, what will really happen, and the helper's setup ----------
+let helperState = 'unknown';        // 'unknown' | 'found' | 'missing' | 'forbidden' (installed for another folder) | 'other'
+let helperBio = false;              // the helper says this Mac has Touch ID to use
+let helperTimer = null;
+
+function renderHow() {
+  const mac = Boolean(status && status.mac);
+  let style = document.querySelector('input[name="lockStyle"]:checked')?.value || 'native';
+  if (style === 'native' && !mac) style = 'overlay';
+  const found = helperState === 'found';
+
+  // These two only mean something for the separate lock window.
+  for (const id of ['lockFullscreen', 'minimizeWindows']) $(id).closest('.row').hidden = style !== 'window';
+  $('hideStrictRow').hidden = !(mac && style === 'window');          // closing windows is part of the separate lock window only
+
+  // One plain sentence: what a lock will do right now, not what the setting is called.
+  let tone = 'ok', text;
+  if (style === 'native') {
+    if (found) text = 'Right now Latch locks with the Mac helper: each window is covered, tab strip included, and nothing moves.';
+    else if (helperState === 'unknown') { tone = ''; text = 'Checking for the Mac helper…'; }
+    else { tone = 'warn'; text = helperState === 'forbidden'
+      ? 'Right now Latch locks on the page, because the helper was installed for a different Latch folder. Run the installer again (step 2 below).'
+      : 'Right now Latch locks on the page, because the Mac helper is not installed yet. Finish the steps below to switch over.'; }
+  } else if (style === 'overlay') text = 'Right now Latch locks on the page you are looking at. The tab strip and address bar stay visible; nothing moves.';
+  else text = 'Right now a separate lock window covers the screen and this profile\'s windows are minimized.';
+  $('howDot').className = 'dot' + (tone ? ' ' + tone : '');
+  $('howStatusText').textContent = text;
+
+  // The helper card: setup steps until it is found, then its options.
+  $('helperCard').hidden = !(mac && style === 'native');
+  $('helperSteps').hidden = found;
+  $('checkHelper').hidden = found;
+  $('touchRow').hidden = !found;
+  $('helperTouchId').disabled = !(found && helperBio);
+  $('helperTouchHelp').textContent = found && !helperBio
+    ? 'This Mac reports no Touch ID (no sensor, or no finger enrolled), so only the passcode works.'
+    : 'Adds a fingerprint button to the lock screen, and Return on an empty field uses it. Your passcode always works too.';
+  $('helperTitle').textContent = found ? 'Helper found' : helperState === 'unknown' ? 'Checking the helper…'
+    : helperState === 'forbidden' ? 'Helper installed for another folder' : helperState === 'other' ? 'Helper would not start' : 'Helper not installed yet';
+  $('helperHelp').textContent = found ? 'Installed and answering. It starts only while Latch is locked and quits when you unlock.'
+    : helperState === 'forbidden' ? 'This happens after the Latch folder is moved: the helper only answers the copy of Latch it was installed for.'
+    : helperState === 'other' ? 'It is installed but would not start. Running the installer again refreshes it.'
+    : helperState === 'unknown' ? '' : 'It is a one-time setup. Until then Latch locks on the page instead.';
+  $('waitLine').textContent = helperState === 'forbidden' || helperState === 'other'
+    ? 'Waiting for the new install. This page notices by itself.'
+    : 'Waiting for the helper. This page notices by itself, and there is nothing to reload.';
+}
+
+// Is the Latch helper installed and answering? Quiet checks (the automatic ones) never flash "Checking…".
+async function checkHelper(quiet = false) {
+  if (!quiet) { helperState = 'unknown'; renderHow(); }
+  const { ok, biometric, problem } = await send({ type: 'probeHelper' });
+  helperBio = Boolean(biometric);
+  helperState = ok ? 'found' : (problem || 'missing');
+  renderHow();
+  if (!ok) pollHelper();
+}
+// While the helper is missing, look again every few seconds, so installing it needs no extra click.
+function pollHelper() {
+  clearTimeout(helperTimer);
+  helperTimer = setTimeout(() => {
+    if ($('helperCard').hidden || document.hidden) return pollHelper();      // not looking at it: keep the timer, skip the check
+    if (helperState === 'found') return;                                     // found: stop (the page re-checks when it is shown again)
+    checkHelper(true);
+  }, 3000);
+}
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && !$('helperCard').hidden && helperChecked) checkHelper(true);   // e.g. the helper was removed meanwhile
+});
+$('hideStrict').addEventListener('change', async () => {
+  if (!$('hideStrict').checked) return saveSettings();
+  await braveCheck;
+  toast('Checking that this browser can do it safely…');
+  const probe = await send({ type: 'probeStrict' });
+  if (!probe.ok) {
+    $('hideStrict').checked = false;
+    toast(probe.reason === 'asks-first'
+      ? 'This browser would not close a window here, so hiding completely cannot work. Latch will minimize instead.'
+      : probe.reason === 'brave' ? 'Not in Brave: closing windows crashes it, which we measured. Latch minimizes windows instead.'
+      : 'Hiding windows completely is only available on macOS. Latch will minimize instead.', 'error');
+    return;
+  }
+  toast('Windows will be hidden completely. Ones with unsaved typing stay open (minimized).');
+  saveSettings();
+});
 for (const k of NUMBERS) {
   // Save when the person is done typing, not on every keystroke, and never treat an empty box as zero.
   $(k).addEventListener('input', syncChips);
@@ -219,7 +339,8 @@ $('lockNow').addEventListener('click', async () => {
     toast(result.error === 'incognito-not-allowed' ? 'Allow Latch in private windows first.' : 'Could not lock.', 'error');
     return;
   }
-  mechanism.set(true, true);
+  aegis.set('happy');
+  setTimeout(() => aegis.set('guard'), 1400);
   if (result.noPrivateWindows) toast('Locked. No private windows are open right now; new ones will be covered.');
 });
 $('allowPrivate').addEventListener('click', () => send({ type: 'openIncognitoSettings' }));
@@ -276,10 +397,10 @@ $('repeatPasscode').addEventListener('input', validatePasscodeForm);
 
 function placePasscodeForm() {
   const form = $('passcodeForm');
-  const target = status.hasPasscode ? $('securityFormSlot') : $('setupFormSlot');
+  const target = obActive ? $('obFormSlot') : status.hasPasscode ? $('securityFormSlot') : $('setupFormSlot');
   if (form.parentElement !== target) target.append(form);
   form.classList.toggle('flat', !status.hasPasscode);
-  form.hidden = status.hasPasscode && $('changePasscode').getAttribute('aria-expanded') !== 'true';
+  form.hidden = !obActive && status.hasPasscode && $('changePasscode').getAttribute('aria-expanded') !== 'true';
   $('currentRow').hidden = !status.hasPasscode;
   $('savePasscode').textContent = status.hasPasscode ? 'Change passcode' : 'Set passcode';
   $('changePasscode').textContent = status.hasPasscode ? 'Change…' : 'Set…';
@@ -318,12 +439,15 @@ for (const button of document.querySelectorAll('.reveal')) {
 
 // ---------- recovery code ----------
 function showRecovery(code) {
+  const sheet = $('recoverySheet');
+  if (obActive) { $('obRecoverySlot').append(sheet); sheet.classList.add('flat'); }
+  else { document.querySelector('.main').prepend(sheet); sheet.classList.remove('flat'); }
   $('recoveryValue').textContent = code;
   $('recoverySaved').checked = false;
   $('recoveryDone').disabled = true;
   $('copyRecovery').querySelector('span').textContent = 'Copy';
   $('recoverySheet').hidden = false;
-  $('content').hidden = true;
+  if (obActive) obGo('recovery'); else $('content').hidden = true;
   $('recoverySaved').focus();
   window.scrollTo({ top: 0 });
 }
@@ -346,6 +470,7 @@ $('recoveryDone').addEventListener('click', async () => {
   $('content').hidden = false;
   $('recoveryValue').textContent = '';
   await load();
+  if (obActive) return obGo('private');
   toast('You are protected. Press Lock now to try it.');
 });
 $('newRecovery').addEventListener('click', () => {
@@ -385,7 +510,7 @@ $('touchSetup').addEventListener('click', () => {
       clientDataJSON: b64u.encode(r.clientDataJSON),
       algorithm: r.getPublicKeyAlgorithm(),
     });
-    if (result.ok) { await load(); toast('Touch ID is set up.'); }
+    if (result.ok) { await load(); toast('Touch ID is set up.'); if (obActive) obGo('mac'); }
     return result;
   });
 });
@@ -456,6 +581,45 @@ $('clearActivity').addEventListener('click', () => {
   });
 });
 
+// ---------- appearance: lock screen layout and mascot, with live previews ----------
+function renderAppearance() {
+  const layout = getLayout(), mascot = getMascot();
+  for (const b of document.querySelectorAll('#layoutPicker .pick')) b.setAttribute('aria-checked', String(b.dataset.layout === layout));
+  for (const b of document.querySelectorAll('#mascotPicker .pick')) b.setAttribute('aria-checked', String(b.dataset.mascot === mascot));
+}
+
+// Each mascot card shows the real mascot, and he cheers when you point at his card.
+const previews = [];
+for (const pv of document.querySelectorAll('.mascotPv[data-preview]')) {
+  const box = document.createElement('span');
+  box.className = 'mascot-box';
+  box.style.display = 'block';
+  pv.append(box);
+  const mascot = (pv.dataset.preview === 'kerby' ? mountKerby : mountAegis)(box, { state: 'guard', track: false });
+  previews.push(mascot);
+  const card = pv.closest('.pick');
+  card.addEventListener('pointerenter', () => mascot.set('happy'));
+  card.addEventListener('pointerleave', () => mascot.set('guard'));
+  card.addEventListener('focus', () => mascot.set('happy'));
+  card.addEventListener('blur', () => mascot.set('guard'));
+}
+
+for (const b of document.querySelectorAll('#layoutPicker .pick')) {
+  b.addEventListener('click', () => { setLayout(b.dataset.layout); renderAppearance(); toast('Lock screen changed. Press Preview to see it full size.'); });
+}
+for (const b of document.querySelectorAll('#mascotPicker .pick')) {
+  b.addEventListener('click', () => {
+    setMascot(b.dataset.mascot);
+    renderAppearance();
+    aegis.destroy();                                           // swap the overview mascot right away
+    aegis = mountMascot($('heroArt'), { state: 'guard' });
+    $('overview').toggleAttribute('data-nomascot', aegis.id === 'none');
+    const name = b.querySelector('b').textContent;
+    toast(b.dataset.mascot === 'none' ? 'Mascot turned off.' : `${name} is on guard.`);
+  });
+}
+$('lockPreview').addEventListener('click', () => chrome.tabs.create({ url: chrome.runtime.getURL('ui/lock.html#preview') }));
+
 // ---------- help ----------
 $('shortcutsOpen').addEventListener('click', async () => {
   try { await chrome.tabs.create({ url: 'chrome://extensions/shortcuts' }); }
@@ -472,6 +636,76 @@ const observer = new IntersectionObserver((entries) => {
   if (visible && window.scrollY >= 40) markCurrent(visible.target.id);
 }, { rootMargin: '-10% 0px -70% 0px' });
 for (const a of links) { const section = document.getElementById(a.dataset.nav); if (section) observer.observe(section); }
+
+// ---------- first-run onboarding ----------
+const OB_PANES = ['welcome', 'passcode', 'recovery', 'private', 'touch', 'mac'];
+const OB_IDS = { welcome: 'obWelcome', passcode: 'obPasscode', recovery: 'obRecovery', private: 'obPrivate', touch: 'obTouch', mac: 'obMac' };
+const OB_MASCOT = { welcome: 'guard', passcode: 'guard', recovery: 'happy', private: 'guard', touch: 'guard', mac: 'happy' };
+let obCurrent = 'welcome';
+
+function obGo(name) {
+  if (name === 'touch' && !touchAvailable) name = 'mac';
+  obCurrent = name;
+  for (const key of OB_PANES) $(OB_IDS[key]).hidden = key !== name;
+  const index = OB_PANES.indexOf(name);
+  $('obDots').innerHTML = OB_PANES.filter((key) => key !== 'touch' || touchAvailable).map((key) => `<li class="${key === name ? 'on' : OB_PANES.indexOf(key) < index ? 'done' : ''}"></li>`).join('');
+  obAegis.set(OB_MASCOT[name]);
+  const total = OB_PANES.filter((key) => key !== 'touch' || touchAvailable).length;
+  $('obStepText').textContent = `Step ${Math.min(index + 1, total)} of ${total}`;
+  $('obSkip').hidden = !status.hasPasscode || name === 'welcome' || name === 'passcode' || name === 'recovery';
+  if (name === 'passcode') { placePasscodeForm(); $('newPasscode').focus(); }
+  else { const heading = $(OB_IDS[name]).querySelector('h1, h2'); if (heading) { heading.tabIndex = -1; heading.focus({ preventScroll: true }); } }   // keep keyboard focus on the new step
+  if (name === 'private') renderObPrivate();
+  if (name === 'mac') {
+    const mac = /Mac/.test(navigator.platform);
+    $('obMacTitle').textContent = mac ? 'Lock your Mac too' : 'Lock your computer too';
+    $('obMacText').textContent = mac
+      ? 'Latch covers your browser; macOS covers everything else. Press Control + Command + Q to lock your Mac whenever you step away, and in System Settings turn on “Require password immediately” after sleep or screen saver.'
+      : 'Latch covers your browser; your operating system covers everything else. Lock your computer when you step away (Windows key + L on Windows) and keep a sign-in password on it.';
+  }
+}
+
+function renderObPrivate() {
+  $('obPrivateStatus').textContent = status.incognitoAllowed ? 'Done. Private windows are covered too.' : '';
+  $('obAllow').hidden = status.incognitoAllowed;
+  $('obNextPrivate').textContent = status.incognitoAllowed ? 'Continue' : 'Skip for now';
+  $('obNextPrivate').classList.toggle('primary', status.incognitoAllowed);
+}
+
+async function startOnboarding() {
+  obActive = true;
+  $('shell').hidden = true;
+  $('onboarding').hidden = false;
+  placePasscodeForm();
+  document.body.toggleAttribute('data-ob', true);
+  obGo('welcome');
+}
+
+async function finishOnboarding() {
+  await chrome.storage.local.set({ onboarded: true });
+  obActive = false;
+  obAegis.destroy();                       // he is hidden now, so stop him blinking and tracking
+  document.body.removeAttribute('data-ob');
+  $('onboarding').hidden = true;
+  $('shell').hidden = false;
+  await load();
+  aegis.set('happy');
+  setTimeout(() => aegis.set('guard'), 1600);
+  toast('You are protected. Press Lock now to try it.');
+}
+
+$('obStart').addEventListener('click', () => obGo('passcode'));
+$('obNextPrivate').addEventListener('click', () => obGo('touch'));
+$('obNextTouch').addEventListener('click', () => obGo('mac'));
+$('obAllow').addEventListener('click', () => send({ type: 'openIncognitoSettings' }));
+$('obTouchSetup').addEventListener('click', () => $('touchSetup').click());
+$('obFinish').addEventListener('click', finishOnboarding);
+$('obSkip').addEventListener('click', finishOnboarding);
+// Aegis raises his shield while a passcode is typed
+for (const id of ['newPasscode', 'repeatPasscode']) {
+  $(id).addEventListener('input', () => { if (obActive) obAegis.set($(id).value ? 'typing' : 'guard'); });
+  $(id).addEventListener('blur', () => { if (obActive && obCurrent === 'passcode') obAegis.set('guard'); });
+}
 
 // ---------- load ----------
 async function load() {
@@ -494,11 +728,25 @@ async function load() {
 }
 
 (async () => {
-  mechanism = mountMechanism($('heroArt'), false);
+  aegis = mountMascot($('heroArt'), { state: 'guard' });
+  $('overview').toggleAttribute('data-nomascot', aegis.id === 'none');
+  mountScene($('obScene'));
+  obAegis = mountMascot($('obMascot'), { state: 'guard' });
   try { touchAvailable = Boolean(window.PublicKeyCredential) && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable(); } catch { touchAvailable = false; }
+  renderAppearance();
   await load();
+  // Someone who set Latch up before onboarding existed has already finished it.
+  const { onboarded, recoveryAck } = await chrome.storage.local.get(['onboarded', 'recoveryAck']);
+  if (!onboarded && status.hasPasscode && recoveryAck) await chrome.storage.local.set({ onboarded: true });
+  else if (!status.hasPasscode) await startOnboarding();
   if (location.hash) document.querySelector(location.hash)?.scrollIntoView();
 })();
 
 // Coming back from the extension settings page: re-check whether private windows are allowed.
-window.addEventListener('focus', () => { if (status) load(); });
+async function refreshStatus() {
+  status = await send({ type: 'getStatus' });
+  renderOverview();
+  renderIncognito();
+  if (obActive && obCurrent === 'private') renderObPrivate();
+}
+window.addEventListener('focus', () => { if (status) refreshStatus(); });

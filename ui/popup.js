@@ -1,4 +1,8 @@
+import { mountMascot } from './mascot.js';
+
 const $ = (id) => document.getElementById(id);
+let aegis = mountMascot($('mascot'), { state: 'guard' });
+if (aegis.id === 'none') { $('mascot').hidden = false; $('mascot').innerHTML = '<img src="../icons/icon-48.png" alt="" width="32" height="32">'; $('mascot').dataset.mascot = 'none'; }
 const send = (message) => chrome.runtime.sendMessage(message);
 let minutes = 15;
 let lastStatus = null;
@@ -21,6 +25,8 @@ async function render() {
   $('setup').hidden = status.hasPasscode;
   $('main').hidden = !status.hasPasscode;
   $('resumeBar').hidden = !status.paused;
+  $('pauseToggle').hidden = Boolean(status.paused);                 // already paused: offer Resume, not Pause
+  if (status.paused) $('pausePanel').hidden = true;
   $('lock').hidden = privateLocked;
   $('lock').disabled = privateBlocked;
   $('unlockPrivate').hidden = !privateLocked;
@@ -29,6 +35,7 @@ async function render() {
 
   const dot = $('dot');
   dot.className = 'dot';
+  aegis.set(!status.hasPasscode ? 'guard' : (!status.enabled || status.paused) ? 'sleep' : 'guard');
   $('notice').hidden = !(status.failedSinceUnlock > 0);
   if (status.failedSinceUnlock > 0) {
     $('noticeText').textContent = status.failedSinceUnlock === 1
@@ -42,7 +49,7 @@ async function render() {
     const forever = status.paused - Date.now() > 300 * 24 * 3600000;
     $('status').textContent = 'Paused';
     dot.classList.add('warn');
-    $('pausedText').textContent = forever ? 'Paused until you resume' : 'Paused until ' + new Date(status.paused).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    $('pausedText').textContent = forever ? 'Until you resume' : 'Back on at ' + new Date(status.paused).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     $('detail').textContent = '';
     return;
   }

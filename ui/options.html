@@ -4,18 +4,68 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Latch settings</title>
+  <link rel="preload" href="fonts/geist-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="common.css">
+  <link rel="stylesheet" href="aegis.css">
+  <link rel="stylesheet" href="kerby.css">
   <link rel="stylesheet" href="options.css">
 </head>
 <body>
-  <div class="shell">
+  <!-- first run: one calm step at a time, with Aegis -->
+  <section class="ob" id="onboarding" hidden aria-labelledby="obTitle">
+    <div class="obCard card">
+      <div class="obHero"><div class="obScene" id="obScene"></div><div class="obMascot" id="obMascot"></div></div>
+      <div class="obBody">
+        <ol class="obDots" id="obDots" aria-hidden="true"></ol>
+        <p class="sr" id="obStepText" role="status"></p>
+
+        <div class="pane" id="obWelcome">
+          <h1 id="obTitle">Hi, I'm Aegis.</h1>
+          <p class="muted">I'm a little marble hoplite. While you are away I keep your browser locked behind my shield, and I never close, reload or change a single tab. Setup takes about a minute.</p>
+          <button class="btn primary wide" id="obStart" type="button">Get started</button>
+        </div>
+
+        <div class="pane" id="obPasscode" hidden>
+          <h2>Choose a passcode</h2>
+          <p class="muted">I will ask for it whenever the browser is locked. My shield goes up while you type.</p>
+          <div id="obFormSlot"></div>
+        </div>
+
+        <div class="pane" id="obRecovery" hidden><div id="obRecoverySlot"></div></div>
+
+        <div class="pane" id="obPrivate" hidden>
+          <h2>Cover private windows too</h2>
+          <p class="muted">Private windows are only covered if you allow Latch in them. It is one switch in the extension's settings.</p>
+          <p class="small obStatus" id="obPrivateStatus" role="status"></p>
+          <div class="obActions"><button class="btn primary" id="obAllow" type="button">Open extension settings</button><button class="btn" id="obNextPrivate" type="button">Skip for now</button></div>
+        </div>
+
+        <div class="pane" id="obTouch" hidden>
+          <h2>Unlock with Touch ID</h2>
+          <p class="muted">Optional. Your passcode always works too.</p>
+          <div class="obActions"><button class="btn primary" id="obTouchSetup" type="button"><svg class="i"><use href="icons.svg#fingerprint"/></svg> Set up Touch ID</button><button class="btn" id="obNextTouch" type="button">Skip</button></div>
+        </div>
+
+        <div class="pane" id="obMac" hidden>
+          <h2 id="obMacTitle">Lock your Mac too</h2>
+          <p class="muted" id="obMacText"></p>
+          <button class="btn primary wide" id="obFinish" type="button">Finish</button>
+        </div>
+      </div>
+      <button class="btn quiet obSkip" id="obSkip" type="button" hidden>Skip the rest</button>
+    </div>
+  </section>
+
+  <div class="shell" id="shell">
     <aside class="nav">
       <div class="brand"><img src="../icons/icon-48.png" alt="" width="30" height="30"><strong>Latch</strong></div>
       <nav aria-label="Settings sections">
         <a href="#overview" data-nav="overview"><svg class="i"><use href="icons.svg#grid"/></svg> Overview</a>
         <a href="#protect" data-nav="protect"><svg class="i"><use href="icons.svg#shield-check"/></svg> What to protect</a>
+        <a href="#how" data-nav="how"><svg class="i"><use href="icons.svg#lock"/></svg> How it locks</a>
         <a href="#when" data-nav="when"><svg class="i"><use href="icons.svg#clock"/></svg> When to lock</a>
         <a href="#while" data-nav="while"><svg class="i"><use href="icons.svg#layers"/></svg> While locked</a>
+        <a href="#appearance" data-nav="appearance"><svg class="i"><use href="icons.svg#sparkles"/></svg> Appearance</a>
         <a href="#security" data-nav="security"><svg class="i"><use href="icons.svg#key"/></svg> Passcode and recovery</a>
         <a href="#activity" data-nav="activity"><svg class="i"><use href="icons.svg#activity"/></svg> Activity</a>
         <a href="#help" data-nav="help"><svg class="i"><use href="icons.svg#info"/></svg> Help</a>
@@ -87,6 +137,45 @@
             </div>
           </section>
 
+          <section id="how" class="group" aria-labelledby="howTitle">
+            <h2 id="howTitle">How Latch locks</h2>
+            <p class="status" id="howStatus" role="status"><span class="dot" id="howDot"></span><span id="howStatusText"></span></p>
+            <div class="choices one" role="radiogroup" aria-labelledby="howTitle">
+              <label class="choice" id="styleNativeRow"><input type="radio" name="lockStyle" value="native" id="styleNative">
+                <span class="choiceBody"><svg class="i"><use href="icons.svg#shield-check"/></svg><span class="grow"><b>Native Mac helper <span class="beta">Recommended</span></b><span class="muted small block">A small Mac app puts the lock on top of each window, exactly where it is.</span>
+                  <ul class="facts"><li><svg class="i yes"><use href="icons.svg#check"/></svg>Covers the tab strip and address bar too</li><li><svg class="i yes"><use href="icons.svg#check"/></svg>Nothing moves, resizes or minimizes, in full screen as well</li><li><svg class="i yes"><use href="icons.svg#check"/></svg>Touch ID on the lock screen</li><li class="no"><svg class="i"><use href="icons.svg#x"/></svg>One-time setup, Mac only</li></ul></span></span></label>
+              <label class="choice"><input type="radio" name="lockStyle" value="overlay" id="styleOverlay">
+                <span class="choiceBody"><svg class="i"><use href="icons.svg#window"/></svg><span class="grow"><b>On the page</b><span class="muted small block">The lock sits on the page you are looking at. Nothing moves.</span>
+                  <ul class="facts"><li><svg class="i yes"><use href="icons.svg#check"/></svg>Nothing to install</li><li><svg class="i yes"><use href="icons.svg#check"/></svg>Nothing moves or minimizes</li><li class="no"><svg class="i"><use href="icons.svg#x"/></svg>The tab strip and address bar stay visible</li><li class="no"><svg class="i"><use href="icons.svg#x"/></svg>Browser pages (new tab, settings) cannot be covered, so that window is minimized</li></ul></span></span></label>
+              <label class="choice"><input type="radio" name="lockStyle" value="window" id="styleWindow">
+                <span class="choiceBody"><svg class="i"><use href="icons.svg#layers"/></svg><span class="grow"><b>Separate lock window</b><span class="muted small block">A lock window covers the screen and this profile's windows are minimized.</span>
+                  <ul class="facts"><li><svg class="i yes"><use href="icons.svg#check"/></svg>Nothing to install</li><li><svg class="i yes"><use href="icons.svg#check"/></svg>Hides the most</li><li class="no"><svg class="i"><use href="icons.svg#x"/></svg>Windows minimize, and a window in full screen steps out of it</li><li class="no"><svg class="i"><use href="icons.svg#x"/></svg>A new window opens to type the passcode</li></ul></span></span></label>
+            </div>
+
+            <div class="card helper" id="helperCard" hidden>
+              <div class="row">
+                <span class="rowIcon"><svg class="i"><use href="icons.svg#shield-check"/></svg></span>
+                <span class="grow"><span class="title" id="helperTitle">Latch helper</span><span class="muted small block" id="helperHelp"></span></span>
+                <button class="btn quiet" type="button" id="checkHelper">Check again</button>
+              </div>
+              <ol class="setup" id="helperSteps">
+                <li><span class="stepBody"><b>Open Latch's folder</b><span class="muted small block">This opens Latch in your extensions. Click the path next to <i>Source</i> and Finder shows the folder.</span><button class="btn" type="button" id="openLatchPage">Open Latch in extensions<svg class="i"><use href="icons.svg#arrow-up-right"/></svg></button></span></li>
+                <li><span class="stepBody"><b>Double-click “Install Latch Helper”</b><span class="muted small block">It sits next to <code>manifest.json</code>. It takes a second and needs no developer tools. macOS may ask you to confirm once: right-click it and choose Open.</span></span></li>
+                <li><span class="stepBody"><b>Come back here</b><span class="muted small block waiting"><span class="dot"></span><span id="waitLine">Waiting for the helper. This page notices by itself, and there is nothing to reload.</span></span></span></li>
+              </ol>
+              <label class="row" id="touchRow" hidden><span class="rowIcon"><svg class="i"><use href="icons.svg#fingerprint"/></svg></span><span class="grow"><span class="title">Unlock with Touch ID</span><span class="muted small block" id="helperTouchHelp">Adds a fingerprint button to the lock screen, and Return on an empty field uses it. Your passcode always works too.</span></span><input class="switch" role="switch" type="checkbox" id="helperTouchId"></label>
+              <details class="about">
+                <summary>What does the helper do?</summary>
+                <ul>
+                  <li>It runs only while Latch is locked, and quits when you unlock.</li>
+                  <li>It draws its own lock windows on top of your browser windows. It never reads, moves, closes or changes a tab, window or page.</li>
+                  <li>You type the passcode into the helper, not into a web page. Latch (the extension) checks it, so the passcode is never stored in the helper.</li>
+                  <li>It is a one-time install. Moving the Latch folder means running the installer again. “Uninstall Latch Helper” in the same folder removes it.</li>
+                </ul>
+              </details>
+            </div>
+          </section>
+
           <section id="when" class="group" aria-labelledby="whenTitle">
             <h2 id="whenTitle">When to lock</h2>
             <div class="card list">
@@ -120,11 +209,34 @@
             <h2 id="whileTitle">While locked</h2>
             <div class="card list">
               <label class="row"><span class="rowIcon"><svg class="i"><use href="icons.svg#layers"/></svg></span><span class="grow"><span class="title">Cover every page</span><span class="muted small block">An opaque lock screen over each page, above dialogs and full-screen video.</span></span><input class="switch" role="switch" type="checkbox" id="coverPages"></label>
+              <label class="row" id="hideStrictRow" hidden><span class="rowIcon"><svg class="i"><use href="icons.svg#eye-off"/></svg></span><span class="grow"><span class="title">Hide windows completely <span class="beta">Experimental</span></span><span class="muted small block">Closes your windows while locked, so nothing shows in Stage Manager, Mission Control or the Dock, and rebuilds them when you unlock. Not available in Brave: closing windows crashes it. Windows with unsaved typing, playing sound or pages that cannot be reopened are minimized instead.</span></span><input class="switch" role="switch" type="checkbox" id="hideStrict"></label>
               <label class="row"><span class="rowIcon"><svg class="i"><use href="icons.svg#window"/></svg></span><span class="grow"><span class="title">Minimize windows</span><span class="muted small block">Brought back as they were when you unlock. Needs the browser to allow minimizing.</span></span><input class="switch" role="switch" type="checkbox" id="minimizeWindows"></label>
               <label class="row"><span class="rowIcon"><svg class="i"><use href="icons.svg#pause"/></svg></span><span class="grow"><span class="title">Pause video and audio</span><span class="muted small block">Stops anything playing on the covered pages.</span></span><input class="switch" role="switch" type="checkbox" id="pauseMedia"></label>
+              <label class="row"><span class="rowIcon"><svg class="i"><use href="icons.svg#display"/></svg></span><span class="grow"><span class="title">Lock window in full screen</span><span class="muted small block">Also hides the Dock and menu bar while locked. Off still covers the whole screen.</span></span><input class="switch" role="switch" type="checkbox" id="lockFullscreen"></label>
               <label class="row"><span class="rowIcon"><svg class="i"><use href="icons.svg#speaker-off"/></svg></span><span class="grow"><span class="title">Mute tabs that make sound</span><span class="muted small block">Unmuted when you unlock.</span></span><input class="switch" role="switch" type="checkbox" id="muteTabs"></label>
             </div>
             <p class="reassure small muted"><svg class="i"><use href="icons.svg#shield-check"/></svg> Latch never closes, reloads or edits your tabs, tab groups or windows.</p>
+          </section>
+
+          <section id="appearance" class="group" aria-labelledby="appearanceTitle">
+            <h2 id="appearanceTitle">Appearance</h2>
+            <div class="card pad pickers">
+              <div class="pickGroup">
+                <div class="pickHead"><span class="title" id="layoutLabel">Lock screen</span><button class="btn" id="lockPreview" type="button">Preview full screen</button></div>
+                <div class="picker two" id="layoutPicker" role="radiogroup" aria-labelledby="layoutLabel">
+                  <button type="button" class="pick" role="radio" data-layout="device" aria-checked="true"><span class="pv shot"><img src="art/layout-device.webp" alt="" width="320" height="200" loading="lazy"></span><b>Combination lock</b><span class="muted small">A tactile device. The dial turns as you type.</span></button>
+                  <button type="button" class="pick" role="radio" data-layout="card" aria-checked="false"><span class="pv shot"><img src="art/layout-card.webp" alt="" width="320" height="200" loading="lazy"></span><b>Trading card</b><span class="muted small">Your mascot on a painted card that reacts to you.</span></button>
+                </div>
+              </div>
+              <div class="pickGroup">
+                <div class="pickHead"><span class="title" id="mascotLabel">Mascot</span><span class="muted small">Shown while you set up, in the toolbar, on the overview and on the trading card.</span></div>
+                <div class="picker three" id="mascotPicker" role="radiogroup" aria-labelledby="mascotLabel">
+                  <button type="button" class="pick" role="radio" data-mascot="aegis" aria-checked="true"><span class="pv mascotPv" data-preview="aegis"></span><b>Aegis</b><span class="muted small">A little marble hoplite. Raises his shield while you type.</span></button>
+                  <button type="button" class="pick" role="radio" data-mascot="kerby" aria-checked="false"><span class="pv mascotPv" data-preview="kerby"></span><b>Kerby</b><span class="muted small">A three-headed guard pup. Closes his eyes while you type.</span></button>
+                  <button type="button" class="pick" role="radio" data-mascot="none" aria-checked="false"><span class="pv mascotPv none"><img src="../icons/icon-128.png" alt="" width="64" height="64"></span><b>None</b><span class="muted small">Just the lock. No character anywhere.</span></button>
+                </div>
+              </div>
+            </div>
           </section>
 
           <section id="security" class="group" aria-labelledby="securityTitle">

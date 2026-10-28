@@ -5,6 +5,8 @@ import http from 'node:http';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { existsSync, unlinkSync } from 'node:fs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const out = (name) => path.join(root, 'docs/screenshots', name);
@@ -44,28 +46,36 @@ try {
     await cdp.send('WebAuthn.enable');
     await cdp.send('WebAuthn.addVirtualAuthenticator', { options: { protocol: 'ctap2', transport: 'internal', hasResidentKey: false, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true } });
   };
-  const open = async (file, size, scheme = 'light', touch = false) => {
+  const open = async (file, size, scheme = 'light', touch = false, prefs = null) => {
     const page = await context.newPage();
+    if (prefs) await page.addInitScript((p) => { for (const [k, v] of Object.entries(p)) localStorage.setItem(k, v); }, prefs);
     await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' });
     await page.setViewportSize(size);
     if (touch) await withTouchId(page);
     await page.goto(ext(file));
     return page;
   };
+  const PASS = 'correct horse battery';
 
-  // First run: nothing is set up yet.
-  const setup = await open('ui/options.html', { width: 1120, height: 900 });
-  await setup.waitForFunction(() => document.getElementById('statusTitle').textContent !== 'Latch');
-  await shot(setup, 'settings-setup.png', { fullPage: true });
-  await setup.fill('#newPasscode', 'correct horse battery');
-  await setup.fill('#repeatPasscode', 'correct horse battery');
-  await setup.click('#savePasscode');
-  await setup.waitForSelector('#recoverySheet:not([hidden])');
-  await setup.setViewportSize({ width: 1120, height: 640 });
-  await shot(setup, 'recovery-code.png');
-  await setup.check('#recoverySaved');
-  await setup.click('#recoveryDone');
-  await setup.close();
+  // First run: Aegis walks you through it.
+  const ob = await open('ui/options.html', { width: 1000, height: 760 });
+  await ob.waitForSelector('#onboarding:not([hidden])');
+  await ob.waitForTimeout(500);
+  await shot(ob, 'onboarding-welcome.png');
+  await ob.click('#obStart');
+  await ob.fill('#newPasscode', PASS);
+  await ob.fill('#repeatPasscode', PASS);
+  await ob.waitForSelector('.aegis[data-state="typing"]');
+  await shot(ob, 'onboarding-passcode.png');
+  await ob.click('#savePasscode');
+  await ob.waitForSelector('#recoverySheet:not([hidden])');
+  await shot(ob, 'onboarding-recovery.png');
+  await ob.check('#recoverySaved');
+  await ob.click('#recoveryDone');
+  await ob.waitForSelector('#obPrivate:not([hidden])');
+  await shot(ob, 'onboarding-private.png');
+  await ob.click('#obSkip');
+  await ob.close();
 
   // Settings, light and dark.
   for (const scheme of ['light', 'dark']) {
@@ -73,15 +83,15 @@ try {
     await page.waitForFunction(() => document.getElementById('statusTitle').textContent.includes('Protecting'));
     if (scheme === 'light') {
       await page.click('#touchSetup');
-      await page.fill('#authPasscode', 'correct horse battery');
+      await page.fill('#authPasscode', PASS);
       await page.click('#save');
       await page.waitForSelector('#touchRemove:not([hidden])');
+      await page.waitForTimeout(3000);                      // let the toast fade
     }
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(400);
     await shot(page, scheme === 'light' ? 'settings-light.png' : 'settings-dark.png', { fullPage: true });
     if (scheme === 'light') {
       await page.setViewportSize({ width: 1120, height: 900 });
-      await page.waitForTimeout(3000);                    // let the earlier toast fade
       await page.fill('#autoLockMinutes', '0');
       await page.press('#autoLockMinutes', 'Tab');
       await page.waitForSelector('#authRow:not([hidden])');
@@ -96,11 +106,9 @@ try {
   for (const scheme of ['light', 'dark']) {
     const popup = await open('ui/popup.html', { width: 320, height: 330 }, scheme);
     await popup.waitForFunction(() => document.getElementById('status').textContent.includes('Protecting'));
+    await popup.waitForTimeout(300);
     await shot(popup, scheme === 'light' ? 'popup-light.png' : 'popup.png', { fullPage: true });
-    if (scheme === 'dark') {
-      await popup.click('#pauseToggle');
-      await shot(popup, 'popup-pause.png', { fullPage: true });
-    }
+    if (scheme === 'dark') { await popup.click('#pauseToggle'); await shot(popup, 'popup-pause.png', { fullPage: true }); }
     await popup.close();
   }
 
@@ -118,23 +126,54 @@ try {
     await sample.close();
   }
 
-  // The lock screen, in both appearances, with Touch ID set up, then the recovery path.
+  // The lock screen: both appearances, and the lock reacting to what you do.
   await worker.evaluate(() => chrome.storage.local.set({ state: { locked: true, reason: '5 min of inactivity' } }));
   for (const scheme of ['light', 'dark']) {
     const lock = await open('ui/lock.html', { width: 1440, height: 900 }, scheme, true);
     await lock.waitForFunction(() => document.getElementById('reason').textContent.includes('inactivity'));
-    await shot(lock, scheme === 'light' ? 'lock-light.png' : 'lock.png');
+    await lock.waitForTimeout(400);
+    await shot(lock, scheme === 'light' ? 'lock-light.png' : 'lock-dark.png');
+    if (scheme === 'light') await lock.screenshot({ path: path.join(root, 'ui/art/layout-device.png'), clip: { x: 280, y: 100, width: 880, height: 550 } });
     if (scheme === 'light') {
+      await lock.fill('#passcode', 'not it');
+      await lock.waitForTimeout(500);
+      await shot(lock, 'lock-typing.png');
+      await lock.click('#unlock');
+      await lock.waitForSelector('#dialVisual.wrong');
+      await lock.waitForTimeout(200);
+      await shot(lock, 'lock-wrong.png');
       await lock.click('#forgot');
       await shot(lock, 'lock-recover.png');
     }
     await lock.close();
   }
   await worker.evaluate(() => chrome.storage.local.set({ state: { locked: false } }));
+
+  // The other layout and the other mascot.
+  await worker.evaluate(() => chrome.storage.local.set({ state: { locked: true, reason: '5 min of inactivity' } }));
+  for (const [mascot, scheme] of [['aegis', 'light'], ['kerby', 'dark']]) {
+    const lock = await open('ui/lock.html', { width: 1440, height: 900 }, scheme, true, { lockLayout: 'card', mascot });
+    await lock.waitForFunction(() => document.getElementById('reason').textContent.includes('inactivity'));
+    await lock.waitForTimeout(500);
+    await shot(lock, `lock-card-${mascot}-${scheme}.png`);
+    if (mascot === 'aegis') await lock.screenshot({ path: path.join(root, 'ui/art/layout-card.png'), clip: { x: 280, y: 60, width: 880, height: 550 } });
+    await lock.close();
+  }
+  await worker.evaluate(() => chrome.storage.local.set({ state: { locked: false } }));
+  const reset = await open('ui/options.html', { width: 1120, height: 900 });
+  await reset.evaluate(() => { localStorage.removeItem('lockLayout'); localStorage.removeItem('mascot'); });
+  await reset.close();
+  const appearance = await open('ui/options.html', { width: 1120, height: 900 });
+  await appearance.waitForFunction(() => document.getElementById('statusTitle').textContent.includes('Protecting'));
+  await appearance.locator('#appearance').scrollIntoViewIfNeeded();
+  await appearance.waitForTimeout(300);
+  await appearance.locator('#appearance').screenshot({ path: out('settings-appearance.png') });
+  await appearance.close();
+
   // "Private windows only" before Latch is allowed in private windows: the overview and the popup say so.
   const scoped = await context.newPage();
   await scoped.goto(ext('ui/options.html'));
-  await scoped.evaluate(async (pass) => chrome.runtime.sendMessage({ type: 'saveSettings', settings: { ...(await chrome.runtime.sendMessage({ type: 'getSettings' })).settings, scope: 'private' }, passcode: pass }), 'correct horse battery');
+  await scoped.evaluate(async (pass) => chrome.runtime.sendMessage({ type: 'saveSettings', settings: { ...(await chrome.runtime.sendMessage({ type: 'getSettings' })).settings, scope: 'private' }, passcode: pass }), PASS);
   await scoped.close();
   const warn = await open('ui/options.html', { width: 1120, height: 420 });
   await warn.waitForFunction(() => document.getElementById('statusTitle').textContent.includes('cannot be locked'));
@@ -144,6 +183,13 @@ try {
   await warnPopup.waitForFunction(() => document.getElementById('status').textContent.includes('can’t be locked'));
   await shot(warnPopup, 'popup-private-warning.png', { fullPage: true });
   await warnPopup.close();
+  // The two layout thumbnails shown in Settings are baked to small WebP files (about 10 KB each).
+  for (const name of ['layout-device', 'layout-card']) {
+    const png = path.join(root, `ui/art/${name}.png`);
+    if (!existsSync(png)) continue;
+    try { execFileSync('cwebp', ['-q', '80', '-resize', '320', '200', png, '-o', path.join(root, `ui/art/${name}.webp`)], { stdio: 'ignore' }); unlinkSync(png); }
+    catch { console.log(`cwebp not found: left ${name}.png; convert it to .webp by hand`); }
+  }
   console.log('screenshots written to docs/screenshots');
 } finally {
   await context.close();

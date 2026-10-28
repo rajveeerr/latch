@@ -4,6 +4,20 @@ What other browser lockers offer, what their users run into, and what that means
 Everything here comes from public pages (linked). Vendor pages and vendor blog posts describe
 their own products, so treat their claims and rankings as self-reported.
 
+## What people are asking Brave for
+
+| Source | What it says |
+|---|---|
+| [brave-browser #42457](https://github.com/brave/brave-browser/issues/42457) | "Password-Protection on Tabs and/or Profiles", opened Nov 2024. Labelled `priority/P5`, which a maintainer clarified means it is not on the official Brave roadmap. A May 2026 comment suggests profile-level protection that also encrypts local data. |
+| [brave-browser #54226](https://github.com/brave/brave-browser/issues/54226) | A request for a simple 4 to 8 digit password lock for desktop profiles, closed as a duplicate of #42457 in April 2026. |
+| [brave-core #36413](https://github.com/brave/brave-core/pull/36413) | An Android "browser-wide lockdown" pull request, so the idea exists inside Brave, just not on desktop. |
+| [Brave Community: "A password for the browser itself"](https://community.brave.app/t/a-password-for-the-browser-itself/97057) | Running since December 2019. Use cases: a shared family PC, guests, a family laptop. Pain points: logging out each time is a hassle; saved passwords are visible to anyone at the keyboard; an extension like LockPW is distrusted because it asks for many permissions; extensions add clutter and resource use; some people stay on Firefox for its master password. |
+| [Brave Community: "Password lock / encrypt Brave Browser"](https://community.brave.com/t/password-lock-encrypt-brave-browser-for-security-and-privacy-reasons/103127/17) | A reply says an issue is open, that many people use external password managers, and that the user experience is hard to get right. |
+
+I could not reach Reddit with the research tools used here, so no Reddit threads are cited.
+
+What this changed in Latch: **few permissions and no network** (three at the time; it is six now, one of them only for the optional Mac helper) (the distrust of extensions), **a tiny download and a 5 KB page script** (clutter and resource use), **never closing tabs** (the maker's own lost tabs), a **recovery code** (lockouts), and a Safari-style **private windows only** mode (the request people keep making).
+
 ## What exists
 
 | Product | What it offers | Notes |
