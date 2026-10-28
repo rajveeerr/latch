@@ -221,6 +221,9 @@ final class LockPanel: NSView {
 final class OverlayWindow: NSWindow {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+    // A window of ours must be able to sit exactly where a browser window sits, even at the very top of the screen, where macOS
+    // would otherwise push it down to keep it clear of the menu bar.
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
 }
 
 // MARK: - overlays kept exactly over this profile's windows
@@ -232,6 +235,7 @@ final class Overlays {
     private var timer: Timer?
     private var keyed = false
     private var touchOn = false
+    private var lastReport = (-1, -1)
 
     var primaryHeight: CGFloat { NSScreen.screens.first?.frame.height ?? 0 }
 
@@ -239,6 +243,7 @@ final class Overlays {
         profile = list
         locked = true
         keyed = false
+        lastReport = (-1, -1)
         tick()
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 0.06, repeats: true) { [weak self] _ in self?.tick() }
@@ -276,7 +281,12 @@ final class Overlays {
     private func belongs(_ bounds: CGRect) -> Bool {
         for p in profile {
             if p.fullscreen {
-                if NSScreen.screens.contains(where: { abs($0.frame.width - bounds.width) <= 2 && abs($0.frame.height - bounds.height) <= 2 }) { return true }
+                // In full screen the browser draws its page, toolbar, tab strip and menu bar as separate windows, each as wide as
+                // the screen but not as tall. Every piece that spans a screen is part of the full-screen window.
+                if NSScreen.screens.contains(where: { screen in
+                    let c = cgFrame(screen)          // this screen in the window server's coordinates, so another display works too
+                    return abs(c.width - bounds.width) <= 2 && bounds.minX >= c.minX - 2 && bounds.maxX <= c.maxX + 2 && bounds.minY >= c.minY - 2 && bounds.maxY <= c.maxY + 2
+                }) { return true }
             } else if abs(p.left - bounds.minX) <= 8 && abs(p.top - bounds.minY) <= 8 && abs(p.width - bounds.width) <= 8 && abs(p.height - bounds.height) <= 8 {
                 return true
             }
@@ -294,6 +304,12 @@ final class Overlays {
             let width = p.fullscreen ? Double(screen.width) : p.width, height = p.fullscreen ? Double(screen.height) : p.height
             return height > 0 && bounds.width < width * 0.6 && abs(ratio - width / height) / (width / height) < 0.02
         }
+    }
+
+    // A screen's frame as the window server reports windows: origin at the top-left of the main display, y pointing down.
+    private func cgFrame(_ screen: NSScreen) -> CGRect {
+        let f = screen.frame
+        return CGRect(x: f.minX, y: primaryHeight - f.maxY, width: f.width, height: f.height)
     }
 
     private func cocoaRect(_ b: CGRect) -> NSRect { NSRect(x: b.minX, y: primaryHeight - b.maxY, width: b.width, height: b.height) }
@@ -350,6 +366,17 @@ final class Overlays {
             }
         }
         for (number, window) in windows where !seen.contains(number) { window.orderOut(nil); window.close(); windows[number] = nil }
+
+        // Tell the extension how it is going, so it can show its own unlock screen if this finds nothing to cover.
+        let visible = info.filter { entry in
+            guard (entry[kCGWindowOwnerPID as String] as? Int32) == browserPid, (entry[kCGWindowLayer as String] as? Int) == 0,
+                  let d = entry[kCGWindowBounds as String] as? NSDictionary, let b = CGRect(dictionaryRepresentation: d) else { return false }
+            return b.width >= 300 && b.height >= 200
+        }.count
+        if lastReport.0 != windows.count || lastReport.1 != visible {
+            lastReport = (windows.count, visible)
+            send(["event": "coverage", "overlays": windows.count, "browserWindows": visible])
+        }
     }
 }
 
@@ -365,6 +392,7 @@ func handle(_ message: [String: Any]) {
     case "unlock": overlays.unlock()
     case "ping": send(["event": "ready", "version": protocolVersion, "biometric": biometricAvailable()])
     case "test-submit": if testMode, let passcode = message["passcode"] as? String { overlays.submitFromTest(passcode) }
+    case "test-coverage": if testMode { send(["event": "coverage", "overlays": (message["overlays"] as? NSNumber)?.intValue ?? 0, "browserWindows": (message["browserWindows"] as? NSNumber)?.intValue ?? 0]) }
     case "test-biometric": if testMode { send(["event": "biometric"]) }
     case "test-snapshot": if testMode, let file = message["path"] as? String { overlays.snapshot(to: file) }
     case "quit": exit(0)

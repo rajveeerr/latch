@@ -95,6 +95,7 @@ try {
   const hostFile = path.join(hosts, 'com.latch.helper.json');
   const wrong = JSON.stringify({ name: 'com.latch.helper', description: 'test', path: helper, type: 'stdio', allowed_origins: ['chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/'] });
   const realFile = existsSync(hostFile);
+  if (brave && realFile) { console.log('  (skipped: a real Latch helper is installed for Chrome and Brave on this Mac, and a throwaway Brave would use it. Run "Uninstall Latch Helper" to test in Brave.)'); process.exit(0); }
   if (!realFile) { writeFileSync(hostFile, wrong); wroteHostFile = hostFile; }
   if (!realFile) await check('a helper installed for a different Latch folder is recognised as that, not as missing', async () => {
     const probe = await send({ type: 'probeHelper' });
@@ -137,6 +138,16 @@ try {
     await until(async () => (await send({ type: 'getActivity' })).events.some((e) => e.type === 'failed'), 'the failed attempt to be recorded', 6000);
     assert.equal(await flag(), true, 'still locked');
     assert.ok(helperPids().length >= 1, 'the helper is still there');
+  });
+
+  await check('if the helper reports nothing to cover, the pages show their own unlock screen, so a lock is never invisible', async () => {
+    const nativeUp = () => W(async () => (await chrome.storage.local.get('state')).state.nativeUp === true);
+    assert.equal(await nativeUp(), true, 'the helper is drawing the lock');
+    assert.equal((await send({ type: 'helperSelfTest', coverage: { overlays: 0, browserWindows: 3 } })).ok, true);
+    await until(async () => !(await nativeUp()), 'the pages to take over', 5000);
+    assert.ok((await events()).some((e) => e.includes('found no window of this profile to cover')), 'Activity says why');
+    assert.equal((await send({ type: 'helperSelfTest', coverage: { overlays: 2, browserWindows: 3 } })).ok, true);
+    await until(nativeUp, 'the helper to be trusted again once it covers windows', 5000);
   });
 
   await check('a fingerprint reported by the helper does nothing unless Touch ID is switched on, and unlocks when it is', async () => {
@@ -200,8 +211,13 @@ try {
     assert.equal((await send({ type: 'lock' })).ok, true);
     await until(flag, 'locked');
     const pid = await until(() => helperPids().at(-1), 'the helper', 6000);
-    const screenW = await until(() => { const o = windowsOf(pid).sort((x, y) => y.w * y.h - x.w * x.h)[0]; return o && o.w >= 1000 ? o : null; }, 'a screen-sized lock over the full-screen window', 8000);
-    assert.ok(screenW.w >= 1000);
+    // In full screen the browser draws its page, toolbar, tab strip and menu bar as separate windows. Every one that is on screen
+    // must have a lock exactly over it, not just one screen-sized lock somewhere.
+    await sleep(1500);
+    const pieces = windowsOf(browserPid).filter((w) => w.w >= 1000);
+    assert.ok(pieces.length >= 1, 'the full-screen window is on screen');
+    const overlays = windowsOf(pid);
+    for (const bw of pieces) assert.ok(overlays.some((o) => Math.abs(o.x - bw.x) <= 3 && Math.abs(o.y - bw.y) <= 3 && Math.abs(o.w - bw.w) <= 3 && Math.abs(o.h - bw.h) <= 3), `a lock sits over the piece of the full-screen window at ${bw.x},${bw.y} ${bw.w}x${bw.h}`);
     assert.equal(await popups(), popupsBefore);
     assert.equal((await info(f)).state, 'fullscreen', 'still in full screen');
     assert.equal((await send({ type: 'helperSelfTest', passcode: PASS })).ok, true);

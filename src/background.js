@@ -132,7 +132,8 @@ async function enforceLocked({ fast = false } = {}) {
   const settings = await getSettings();
   try {
     const style = await activeStyle(settings);
-    if (state.nativeUp !== (style === 'native')) await patchState({ nativeUp: style === 'native' });
+    const nativeNow = style === 'native' && !helperBlind;
+    if (state.nativeUp !== nativeNow) await patchState({ nativeUp: nativeNow });
     if (!fast && settings.lockStyle === 'native' && style !== 'native') await logEvent(store, 'setting', 'the Latch helper is not running, so the lock was drawn in the pages instead');
     if (style === 'native') {
       // The helper covers every window of this profile, tab strip included, so nothing is minimized and no window opens.
@@ -178,7 +179,27 @@ async function syncHelper(settings) {
 }
 
 // What the helper reports: a passcode typed into its lock screen, or a request for Touch ID (opens the small unlock window).
+// The helper found no window of this profile on screen to cover (it counts browser windows and its own locks). Waiting a moment
+// avoids reacting to a window that is just opening; then the pages show their own unlock screen too, so a lock is never invisible.
+let helperBlind = false;
+let blindTimer = null;
+async function onHelperCoverage({ overlays, browserWindows }) {
+  clearTimeout(blindTimer);
+  if (overlays > 0 || !(browserWindows > 0)) {
+    if (helperBlind) { helperBlind = false; if ((await getState()).locked) await patchState({ nativeUp: helperUp() }); }
+    return;
+  }
+  blindTimer = setTimeout(async () => {
+    const state = await getState();
+    if (!state.locked || !helperUp() || helperBlind) return;
+    helperBlind = true;
+    await patchState({ nativeUp: false });
+    await logEvent(store, 'setting', 'the helper found no window of this profile to cover, so the unlock screen is also shown in the pages');
+  }, 1500);
+}
+
 async function onHelperMessage(message) {
+  if (message?.event === 'coverage') return onHelperCoverage(message);
   if (message?.event === 'attempt') {
     const result = await handlers.unlock({ passcode: String(message.passcode ?? '') });
     if (!result.ok) sendHelper({ cmd: 'result', ok: false, error: result.error, retryAfterMs: result.retryAfterMs });
@@ -470,6 +491,7 @@ function openUnlockWindow() {
 function unlockNow({ error = '', method = 'passcode' } = {}) {
   return serial(async () => {
     const state = await getState();
+    helperBlind = false; clearTimeout(blindTimer);
     await patchState({ locked: false, reason: '', error, nativeUp: false });   // pages uncover as soon as this lands
     if (helperUp()) { sendHelper({ cmd: 'unlock' }); setTimeout(closeHelper, 1000); }   // the helper takes its lock away, then quits
     if (state.locked) await logEvent(store, 'unlock', method);
@@ -696,7 +718,7 @@ const handlers = {
   openUnlockWindow: () => openUnlockWindow(),
   // For the helper test only: makes the helper act as if a passcode was typed into its lock screen. The helper ignores it
   // unless it was started with LATCH_HELPER_TEST=1, so it does nothing in normal use.
-  async helperSelfTest({ passcode, snapshot, biometric }) { return { ok: sendHelper(biometric ? { cmd: 'test-biometric' } : snapshot ? { cmd: 'test-snapshot', path: String(snapshot) } : { cmd: 'test-submit', passcode: String(passcode ?? '') }) }; },
+  async helperSelfTest({ passcode, snapshot, biometric, coverage }) { return { ok: sendHelper(coverage ? { cmd: 'test-coverage', ...coverage } : biometric ? { cmd: 'test-biometric' } : snapshot ? { cmd: 'test-snapshot', path: String(snapshot) } : { cmd: 'test-submit', passcode: String(passcode ?? '') }) }; },
   // Settings asks whether the helper is installed and answering.
   async probeHelper() {
     const ok = await connectHelper({ message: onHelperMessage, gone: onHelperGone }, { force: true });
