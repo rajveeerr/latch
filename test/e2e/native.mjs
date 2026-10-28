@@ -174,6 +174,18 @@ try {
     assert.deepEqual(await info(a), await info(a));
   });
 
+  await check('an automatic lock (the same timer the "browser in the background" lock uses) puts the helper lock up too, and unlocking works', async () => {
+    assert.equal(await flag(), false, 'unlocked to start with');
+    await W(async () => { chrome.alarms.create('blur', { when: Date.now() + 600 }); });
+    await until(flag, 'the automatic lock to engage', 8000);
+    const pid = await until(() => helperPids().at(-1), 'the helper to start for it', 8000);
+    await until(() => { const o = windowsOf(pid); return o.length >= 1 ? o : null; }, 'the helper lock to be on screen', 8000);
+    assert.ok((await events()).some((e) => e.includes('background')), 'Activity says why it locked');
+    assert.equal((await send({ type: 'helperSelfTest', passcode: PASS })).ok, true);
+    await until(async () => !(await flag()), 'unlocked', 6000);
+    await until(() => helperPids().length === 0, 'the helper to quit', 8000);
+  });
+
   await check('a maximized window, and a window minimized then restored while locked: each is covered exactly, nothing is resized or moved', async () => {
     const m = await create({ url: site('max'), left: 40, top: 40, width: 700, height: 500, state: 'normal' });
     await W((i) => chrome.windows.update(i, { state: 'maximized' }), m);
