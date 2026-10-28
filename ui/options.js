@@ -103,9 +103,8 @@ function writeForm(s) {
   $('styleNativeRow').hidden = !mac;                               // the helper is a Mac program
   const style = s.lockStyle === 'native' && !mac ? 'overlay' : s.lockStyle;
   $({ native: 'styleNative', overlay: 'styleOverlay', window: 'styleWindow' }[style]).checked = true;
-  $('lockFullscreen').disabled = style !== 'window';               // a full-screen lock window only exists in the lock-window style
-  $('helperCard').hidden = !(mac && style === 'native');
-  if (!$('helperCard').hidden && !helperChecked) { helperChecked = true; checkHelper(); }       // say right away whether it is installed
+  renderHow();
+  if (mac && style === 'native' && !helperChecked) { helperChecked = true; checkHelper(); }       // say right away whether it is installed
   $('hideStrict').checked = s.hideMode === 'close';
   $('hideStrictRow').hidden = !(status && status.mac);          // closing windows is only offered where it is safe: macOS
   syncChips();
@@ -221,38 +220,75 @@ for (const radio of document.querySelectorAll('input[name="scope"]')) radio.addE
 // The two lock-window switches are alternatives: turning one on turns the other off.
 $('lockFullscreen').addEventListener('change', () => saveSettings());
 for (const radio of document.querySelectorAll('input[name="lockStyle"]')) radio.addEventListener('change', () => {
-  $('lockFullscreen').disabled = readForm().lockStyle !== 'window';
-  $('helperCard').hidden = readForm().lockStyle !== 'native';
+  renderHow();
   if (readForm().lockStyle === 'native') checkHelper();
   saveSettings();
 });
 $('checkHelper').addEventListener('click', () => checkHelper());
-// Is the Latch helper installed and answering? Says how to install it when it is not.
-async function checkHelper(quiet = false) {
-  if (!quiet) $('helperTitle').textContent = 'Checking the helper…';
-  const { ok, biometric, problem } = await send({ type: 'probeHelper' });
-  $('helperTitle').textContent = ok ? 'Helper found' : problem === 'forbidden' ? 'Helper installed for another folder' : 'Helper not installed yet';
-  $('helperTouchId').disabled = !(ok && biometric);                 // needs the helper, and a Mac with Touch ID set up
-  $('touchHelp').textContent = ok && !biometric
+$('openLatchPage').addEventListener('click', () => send({ type: 'openIncognitoSettings' }));   // Latch's own page in the extensions list
+
+// ---------- how it locks: what is chosen, what will really happen, and the helper's setup ----------
+let helperState = 'unknown';        // 'unknown' | 'found' | 'missing' | 'forbidden' (installed for another folder) | 'other'
+let helperBio = false;              // the helper says this Mac has Touch ID to use
+let helperTimer = null;
+
+function renderHow() {
+  const mac = Boolean(status && status.mac);
+  let style = document.querySelector('input[name="lockStyle"]:checked')?.value || 'native';
+  if (style === 'native' && !mac) style = 'overlay';
+  const found = helperState === 'found';
+
+  // These two only mean something for the separate lock window.
+  for (const id of ['lockFullscreen', 'minimizeWindows']) $(id).closest('.row').hidden = style !== 'window';
+
+  // One plain sentence: what a lock will do right now, not what the setting is called.
+  let tone = 'ok', text;
+  if (style === 'native') {
+    if (found) text = 'Right now Latch locks with the Mac helper: each window is covered, tab strip included, and nothing moves.';
+    else if (helperState === 'unknown') { tone = ''; text = 'Checking for the Mac helper…'; }
+    else { tone = 'warn'; text = helperState === 'forbidden'
+      ? 'Right now Latch locks on the page, because the helper was installed for a different Latch folder. Run the installer again (step 2 below).'
+      : 'Right now Latch locks on the page, because the Mac helper is not installed yet. Finish the steps below to switch over.'; }
+  } else if (style === 'overlay') text = 'Right now Latch locks on the page you are looking at. The tab strip and address bar stay visible; nothing moves.';
+  else text = 'Right now a separate lock window covers the screen and this profile\'s windows are minimized.';
+  $('howDot').className = 'dot' + (tone ? ' ' + tone : '');
+  $('howStatusText').textContent = text;
+
+  // The helper card: setup steps until it is found, then its options.
+  $('helperCard').hidden = !(mac && style === 'native');
+  $('helperSteps').hidden = found;
+  $('checkHelper').hidden = found;
+  $('touchRow').hidden = !found;
+  $('helperTouchId').disabled = !(found && helperBio);
+  $('touchHelp').textContent = found && !helperBio
     ? 'This Mac reports no Touch ID (no sensor, or no finger enrolled), so only the passcode works.'
-    : 'Adds a fingerprint button to the helper\'s lock screen, and Return on an empty field uses it. Your passcode always works too.';
-  $('helperHelp').textContent = ok
-    ? 'Locking will use it. Windows are covered natively, and the passcode is typed into the helper.'
-    : problem === 'forbidden'
-      ? 'It was installed for a different copy of Latch, which happens after the Latch folder is moved. Double-click "Install Latch Helper" in the Latch folder again. This page notices by itself.'
-      : problem === 'other'
-        ? 'The helper is installed but would not start. Double-click "Install Latch Helper" in the Latch folder again to refresh it.'
-        : 'Until then Latch locks on the page. It is a one-time step: double-click "Install Latch Helper" in the Latch folder. This page notices by itself, and there is nothing to reload.';
-  helperFound = ok;
+    : 'Adds a fingerprint button to the lock screen, and Return on an empty field uses it. Your passcode always works too.';
+  $('helperTitle').textContent = found ? 'Helper found' : helperState === 'unknown' ? 'Checking the helper…'
+    : helperState === 'forbidden' ? 'Helper installed for another folder' : helperState === 'other' ? 'Helper would not start' : 'Helper not installed yet';
+  $('helperHelp').textContent = found ? 'Installed and answering. It starts only while Latch is locked and quits when you unlock.'
+    : helperState === 'forbidden' ? 'This happens after the Latch folder is moved: the helper only answers the copy of Latch it was installed for.'
+    : helperState === 'other' ? 'It is installed but would not start. Running the installer again refreshes it.'
+    : helperState === 'unknown' ? '' : 'It is a one-time setup. Until then Latch locks on the page instead.';
+  $('waitLine').textContent = helperState === 'forbidden' || helperState === 'other'
+    ? 'Waiting for the new install. This page notices by itself.'
+    : 'Waiting for the helper. This page notices by itself, and there is nothing to reload.';
+}
+
+// Is the Latch helper installed and answering? Quiet checks (the automatic ones) never flash "Checking…".
+async function checkHelper(quiet = false) {
+  if (!quiet) { helperState = 'unknown'; renderHow(); }
+  const { ok, biometric, problem } = await send({ type: 'probeHelper' });
+  helperBio = Boolean(biometric);
+  helperState = ok ? 'found' : (problem || 'missing');
+  renderHow();
   if (!ok) pollHelper();
 }
-// While the card shows "not installed", look again every few seconds, so installing needs no extra click.
-let helperFound = false, helperTimer = null;
+// While the helper is missing, look again every few seconds, so installing it needs no extra click.
 function pollHelper() {
   clearTimeout(helperTimer);
   helperTimer = setTimeout(() => {
-    if (helperFound || $('helperCard').hidden || document.hidden) return pollHelper();
-    checkHelper(true);          // quietly, so the card does not flicker
+    if (helperState === 'found' || $('helperCard').hidden || document.hidden) return pollHelper();
+    checkHelper(true);
   }, 3000);
 }
 $('hideStrict').addEventListener('change', async () => {

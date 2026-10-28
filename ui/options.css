@@ -200,3 +200,31 @@ body[data-ob]::before { opacity: 1; }
 
 /* Sub-heading inside a settings group ("How it locks") */
 .group > .subhead { margin: 26px 2px 10px; font-size: 14px; font-weight: 600; letter-spacing: -.01em; }
+
+/* ---------- how it locks ---------- */
+.choices.one { grid-template-columns: 1fr; }
+.choices.one .choiceBody .grow { padding-right: 30px; }
+.choiceBody b .beta { margin-left: 8px; }
+.facts { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 5px; font-size: 13px; line-height: 1.45; }
+.facts li { display: flex; gap: 8px; align-items: flex-start; }
+.facts li svg.i { width: 14px; height: 14px; margin-top: 2px; flex: none; color: var(--accent); }
+.facts li.no { color: var(--text-2); }
+.facts li.no svg.i { color: var(--text-2); opacity: .75; }
+
+.status { display: flex; gap: 10px; align-items: center; padding: 0 2px; font-size: 13.5px; line-height: 1.5; }
+
+.card.helper { overflow: hidden; }
+.steps { list-style: none; margin: 0; padding: 16px 16px 6px 58px; display: grid; gap: 18px; counter-reset: step; border-top: 1px solid var(--line); }
+.steps li { counter-increment: step; position: relative; }
+.steps li::before { content: counter(step); position: absolute; left: -34px; top: 1px; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font: 600 12px/1 var(--font); font-variant-numeric: tabular-nums; background: var(--accent-soft); color: var(--accent); }
+.stepBody { display: grid; gap: 4px; justify-items: start; }
+.stepBody b { font-weight: 600; font-size: 14px; }
+.stepBody .btn { margin-top: 6px; display: inline-flex; gap: 6px; align-items: center; }
+.stepBody .btn svg.i { width: 14px; height: 14px; }
+.stepBody code, .about code { font-family: var(--mono); font-size: 12.5px; }
+.waiting { display: flex; align-items: center; gap: 8px; }
+.waiting .dot { animation: wait 1.6s ease-in-out infinite; }
+@keyframes wait { 50% { opacity: .35; } }
+.about { border-top: 1px solid var(--line); padding: 12px 16px; }
+.about summary { cursor: pointer; font-size: 13.5px; font-weight: 500; }
+.about ul { margin: 10px 0 2px; padding-left: 18px; display: grid; gap: 6px; color: var(--text-2); font-size: 13px; line-height: 1.5; }
