@@ -3,7 +3,7 @@
 export const DEFAULTS = Object.freeze({
   enabled: true,
   hideMode: 'minimize',      // 'minimize' = windows go to the Dock (safe, the default); 'close' = experimental: windows are closed and rebuilt on unlock (macOS, never in Brave)
-  lockStyle: 'overlay',      // 'overlay' = the lock sits on each window itself, nothing opens or moves; 'window' = a separate lock window over the screen and the windows are minimized
+  lockStyle: 'native',       // 'native' = the Latch helper draws the lock over each window (falls back to 'overlay' if it is not installed); 'overlay' = the lock sits in the page; 'window' = a separate lock window over the screen and the windows are minimized
   lockWindow: 'fill',        // 'fill' = cover the screen; 'fullscreen' = full screen, which also hides the Dock and menu bar (lock-window style only)
   scope: 'profile',          // 'profile' = lock everything; 'private' = lock only private windows (like Safari)
   autoLockMinutes: 5,        // lock after this long with no keyboard/mouse input; 0 = never
@@ -18,7 +18,7 @@ export const DEFAULTS = Object.freeze({
 });
 
 const SCOPES = ['profile', 'private'];
-const LOCK_STYLES = ['overlay', 'window'];
+const LOCK_STYLES = ['native', 'overlay', 'window'];
 const LOCK_WINDOWS = ['fill', 'fullscreen'];
 const HIDE_MODES = ['minimize', 'close'];
 const BOOLEANS = ['enabled', 'skipWhileAudio', 'lockOnStartup', 'lockOnSystemLock', 'minimizeWindows', 'coverPages', 'pauseMedia', 'muteTabs'];
@@ -50,7 +50,7 @@ export function isWeakening(prev, next) {
   }
   if (!prev.skipWhileAudio && next.skipWhileAudio) return true;
   if (prev.hideMode === 'close' && next.hideMode === 'minimize') return true;     // strict hiding is stronger
-  if (prev.lockStyle === 'window' && next.lockStyle === 'overlay') return true;   // the tab strip stays visible under an overlay, a lock window hides it
+  if (prev.lockStyle !== 'overlay' && next.lockStyle === 'overlay') return true;   // the tab strip stays visible under an in-page overlay; the other two hide it
   if (prev.scope === 'profile' && next.scope === 'private') return true;     // protects less
   for (const k of MINUTES) {
     if (prev[k] === 0) continue;                  // already off, nothing to weaken
@@ -59,8 +59,8 @@ export function isWeakening(prev, next) {
   return false;
 }
 
-// The overlay needs the page cover, so without it the lock falls back to the separate lock window.
-export const overlayStyle = (settings) => settings.lockStyle === 'overlay' && settings.coverPages;
+// The in-page overlay needs the page cover, so without it the lock falls back to the separate lock window.
+export const overlayStyle = (settings) => settings.lockStyle !== 'window' && settings.coverPages;   // 'native' counts: it falls back to the overlay when the helper is missing
 
 // Which windows and tabs a lock applies to. "Private windows only" leaves everything else alone.
 export function covers(settings, item) {

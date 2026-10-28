@@ -12,7 +12,8 @@
     "test:profiles": "node test/e2e/profiles.mjs",
     "icons": "node scripts/make-icons.mjs",
     "screenshots": "node scripts/screenshots.mjs",
-    "zip": "node scripts/zip.mjs"
+    "zip": "node scripts/zip.mjs",
+    "test:native": "node test/e2e/native.mjs"
   },
   "devDependencies": {
     "lucide-static": "^1.62.0",

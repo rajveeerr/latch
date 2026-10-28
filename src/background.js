@@ -8,6 +8,7 @@
 //   * if enforcing the lock fails repeatedly, unlock rather than leave the browser stuck
 
 import { DEFAULTS, normalizeSettings, isWeakening, covers, overlayStyle } from './lib/settings.js';
+import { connectHelper, closeHelper, helperUp, helperAnnounced, sendHelper } from './native.js';
 import {
   hasPasscode, setPasscode, verifyPasscode, resetWithRecovery, regenerateRecovery,
 } from './lib/auth.js';
@@ -35,6 +36,7 @@ const EMPTY_PERSISTENT = {
   lockedAt: 0,
   pausedUntil: 0,
   error: '',          // last problem, shown in settings
+  nativeUp: false,    // the Latch helper is drawing the lock (the page covers then skip their own unlock screen)
 };
 const EMPTY_SESSION = {
   lockWindowId: null,
@@ -117,12 +119,28 @@ function enforceSoon(windowId = null) {
   serial(async () => { fastPending = false; await enforceLocked({ fast: true }); });
 }
 
+// Which way the lock is drawn right now: 'native' (the helper), 'overlay' (in the pages) or 'window' (a lock window).
+// 'native' falls back to the overlay when the helper is not installed or has stopped, so the lock never depends on it.
+async function activeStyle(settings) {
+  if (settings.lockStyle === 'native' && (await connectHelper({ message: onHelperMessage, gone: onHelperGone }))) return 'native';
+  return overlayStyle(settings) ? 'overlay' : 'window';
+}
+
 async function enforceLocked({ fast = false } = {}) {
   const state = await getState();
   if (!state.locked) return;
   const settings = await getSettings();
   try {
-    if (overlayStyle(settings)) {
+    const style = await activeStyle(settings);
+    if (state.nativeUp !== (style === 'native')) await patchState({ nativeUp: style === 'native' });
+    if (!fast && settings.lockStyle === 'native' && style !== 'native') await logEvent(store, 'setting', 'the Latch helper is not running, so the lock was drawn in the pages instead');
+    if (style === 'native') {
+      // The helper covers every window of this profile, tab strip included, so nothing is minimized and no window opens.
+      // The page covers still go on the visible tabs as a second layer in case the helper stops.
+      if (!fast) { await ensureCovers(settings); }
+      await syncHelper(settings);
+      if (!fast && settings.muteTabs) await muteAudibleTabs(settings);
+    } else if (style === 'overlay') {
       // The lock sits on the windows themselves: every page already carries the cover with the unlock screen in it. All that is
       // left is a window whose visible tab cannot hold a cover (new tab page, settings), which is minimized like before.
       if (!fast) { minimizedAt.clear(); await ensureCovers(settings); }
@@ -138,7 +156,7 @@ async function enforceLocked({ fast = false } = {}) {
       // over the screen, and only then are windows taken out of the way (the slow, animated part).
       await ensureCovers(settings);
       if (settings.scope === 'profile') await ensureLockWindow(settings);
-      if (settings.hideMode === 'close' && (await isMac()) && !(await isBrave())) await strictHide(settings);   // (only reached in the lock-window style)
+      if (settings.hideMode === 'close' && (await isMac()) && !(await isBrave())) await strictHide(settings);
       if (settings.minimizeWindows) await minimizeWindows(settings);
       if (settings.muteTabs) await muteAudibleTabs(settings);
     }
@@ -150,8 +168,31 @@ async function enforceLocked({ fast = false } = {}) {
   }
 }
 
-// Hide this profile's windows. The extension API only ever returns windows of the profile it is installed in, so
-// other profiles' windows are never seen, let alone touched.
+// Tell the helper which windows of this profile exist and where, so it can keep a lock over each of them.
+async function syncHelper(settings) {
+  const state = await getState();
+  const windows = (await chrome.windows.getAll())
+    .filter((win) => win.id !== state.lockWindowId && covers(settings, win))
+    .map((win) => ({ id: win.id, left: win.left, top: win.top, width: win.width, height: win.height, fullscreen: win.state === 'fullscreen' }));
+  sendHelper({ cmd: helperAnnounced() ? 'update' : 'lock', windows, reason: state.reason });
+}
+
+// What the helper reports: a passcode typed into its lock screen, or a request for Touch ID (opens the small unlock window).
+async function onHelperMessage(message) {
+  if (message?.event === 'attempt') {
+    const result = await handlers.unlock({ passcode: String(message.passcode ?? '') });
+    if (!result.ok) sendHelper({ cmd: 'result', ok: false, error: result.error, retryAfterMs: result.retryAfterMs });
+  } else if (message?.event === 'touchid') {
+    openUnlockWindow();
+  }
+}
+
+// The helper stopped while locked: draw the lock in the pages at once, so there is never a gap.
+async function onHelperGone() {
+  await patchState({ nativeUp: false });
+  if ((await getState()).locked) enforceSoon();
+}
+
 // Windows we minimized in this lock, and when. The browser may report "normal" for a window that really is minimized
 // (Brave on macOS), so without this every pass would minimize every window again, and each minimize moves focus, which
 // starts the next pass: an endless loop. A window is minimized again only when it was just brought forward, and not
@@ -426,7 +467,8 @@ function openUnlockWindow() {
 function unlockNow({ error = '', method = 'passcode' } = {}) {
   return serial(async () => {
     const state = await getState();
-    await patchState({ locked: false, reason: '', error });   // pages uncover as soon as this lands
+    await patchState({ locked: false, reason: '', error, nativeUp: false });   // pages uncover as soon as this lands
+    if (helperUp()) { sendHelper({ cmd: 'unlock' }); setTimeout(closeHelper, 1000); }   // the helper takes its lock away, then quits
     if (state.locked) await logEvent(store, 'unlock', method);
     for (const id of state.mutedTabs) {
       try { await chrome.tabs.update(id, { muted: false }); } catch { /* tab is gone */ }
@@ -545,8 +587,11 @@ chrome.windows.onCreated.addListener(async (win) => {
   if (win.type !== 'popup' && (await getState()).locked) enforceSoon();
 });
 
+chrome.windows.onBoundsChanged.addListener(async () => { if (helperUp() && (await getState()).locked) enforceSoon(); });   // keep the helper's overlays on the windows
+
 chrome.windows.onRemoved.addListener(async (windowId) => {
   const state = await getState();
+  if (state.locked && windowId !== state.lockWindowId && helperUp()) enforceSoon();   // a window closed: the helper drops its overlay
   if (windowId !== state.lockWindowId) return;
   await patchState({ lockWindowId: null });
   // "Everything" mode: closing the lock window brings it straight back. Private-only mode just stays covered.
@@ -554,7 +599,7 @@ chrome.windows.onRemoved.addListener(async (windowId) => {
 });
 
 // The overlay style only needs a look whenever the visible tab of some window may have changed.
-const lockedOverlay = async () => (await getState()).locked && overlayStyle(await getSettings());
+const lockedOverlay = async () => (await getState()).locked && !helperUp() && overlayStyle(await getSettings());   // (with the helper, tab changes need nothing)
 chrome.tabs.onActivated.addListener(async ({ tabId }) => {
   const [state, settings] = await Promise.all([getState(), getSettings()]);
   if (!state.locked) return;
@@ -646,6 +691,15 @@ const handlers = {
   getSettings: async () => ({ settings: await getSettings(), defaults: DEFAULTS }),
   lock: () => lock('Locked manually'),
   openUnlockWindow: () => openUnlockWindow(),
+  // For the helper test only: makes the helper act as if a passcode was typed into its lock screen. The helper ignores it
+  // unless it was started with LATCH_HELPER_TEST=1, so it does nothing in normal use.
+  async helperSelfTest({ passcode, snapshot }) { return { ok: sendHelper(snapshot ? { cmd: 'test-snapshot', path: String(snapshot) } : { cmd: 'test-submit', passcode: String(passcode ?? '') }) }; },
+  // Settings asks whether the helper is installed and answering.
+  async probeHelper() {
+    const ok = await connectHelper({ message: onHelperMessage, gone: onHelperGone }, { force: true });
+    if (ok && !(await getState()).locked) closeHelper();          // only a check: let it quit again
+    return { ok };
+  },
   // A page cover reports that the unlock screen did not load in its page (a fixed sentence, nothing from the page).
   async coverNote() { await logEvent(store, 'setting', 'the unlock screen did not load inside a page, so the plain Unlock button was shown'); return { ok: true }; },
 

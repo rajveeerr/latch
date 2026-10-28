@@ -127,6 +127,18 @@
               <label class="choice"><input type="radio" name="scope" value="private" id="scopePrivate">
                 <span class="choiceBody"><svg class="i"><use href="icons.svg#mask"/></svg><span><b>Private windows only</b><span class="muted small block">Like Safari: private windows lock when you step away. Your other windows stay open.</span></span></span></label>
             </div>
+            <h3 class="subhead" id="howTitle">How it locks</h3>
+            <div class="choices" role="radiogroup" aria-labelledby="howTitle">
+              <label class="choice" id="styleNativeRow"><input type="radio" name="lockStyle" value="native" id="styleNative">
+                <span class="choiceBody"><svg class="i"><use href="icons.svg#shield-check"/></svg><span><b>Native Mac helper</b><span class="muted small block">A small Mac app draws the lock exactly over each window, tab strip and address bar included. No new window, nothing minimized, works over full screen. Needs a one-time install.</span></span></span></label>
+              <label class="choice"><input type="radio" name="lockStyle" value="overlay" id="styleOverlay">
+                <span class="choiceBody"><svg class="i"><use href="icons.svg#window"/></svg><span><b>On the page</b><span class="muted small block">The lock sits on the tab you are looking at. Nothing moves, but the tab strip and address bar stay visible. Used automatically if the helper is not installed.</span></span></span></label>
+              <label class="choice"><input type="radio" name="lockStyle" value="window" id="styleWindow">
+                <span class="choiceBody"><svg class="i"><use href="icons.svg#layers"/></svg><span><b>Separate lock window</b><span class="muted small block">A lock window covers the screen and this profile's windows are minimized. Hides the most, but windows move.</span></span></span></label>
+            </div>
+            <div class="card list" id="helperCard" hidden>
+              <div class="row"><span class="rowIcon"><svg class="i"><use href="icons.svg#shield-check"/></svg></span><span class="grow"><span class="title" id="helperTitle">Latch helper</span><span class="muted small block" id="helperHelp"></span></span><button class="btn quiet" type="button" id="checkHelper">Check</button></div>
+            </div>
             <div class="card list">
               <div class="row" id="incognitoRow">
                 <span class="rowIcon"><svg class="i"><use href="icons.svg#mask"/></svg></span>
@@ -172,7 +184,6 @@
               <label class="row" id="hideStrictRow" hidden><span class="rowIcon"><svg class="i"><use href="icons.svg#eye-off"/></svg></span><span class="grow"><span class="title">Hide windows completely <span class="beta">Experimental</span></span><span class="muted small block">Closes your windows while locked, so nothing shows in Stage Manager, Mission Control or the Dock, and rebuilds them when you unlock. Not available in Brave: closing windows crashes it. Windows with unsaved typing, playing sound or pages that cannot be reopened are minimized instead.</span></span><input class="switch" role="switch" type="checkbox" id="hideStrict"></label>
               <label class="row"><span class="rowIcon"><svg class="i"><use href="icons.svg#window"/></svg></span><span class="grow"><span class="title">Minimize windows</span><span class="muted small block">Brought back as they were when you unlock. Needs the browser to allow minimizing.</span></span><input class="switch" role="switch" type="checkbox" id="minimizeWindows"></label>
               <label class="row"><span class="rowIcon"><svg class="i"><use href="icons.svg#pause"/></svg></span><span class="grow"><span class="title">Pause video and audio</span><span class="muted small block">Stops anything playing on the covered pages.</span></span><input class="switch" role="switch" type="checkbox" id="pauseMedia"></label>
-              <label class="row"><span class="rowIcon"><svg class="i"><use href="icons.svg#window"/></svg></span><span class="grow"><span class="title">Lock on the window itself</span><span class="muted small block">The lock appears on top of each window, right where it is, and you type the passcode there. Nothing opens, moves or minimizes, so nothing jumps. The tab strip and address bar stay visible. Turn off to use a separate lock window that hides everything instead.</span></span><input class="switch" role="switch" type="checkbox" id="lockOverlay"></label>
               <label class="row"><span class="rowIcon"><svg class="i"><use href="icons.svg#display"/></svg></span><span class="grow"><span class="title">Lock window in full screen</span><span class="muted small block">Also hides the Dock and menu bar while locked. Off still covers the whole screen.</span></span><input class="switch" role="switch" type="checkbox" id="lockFullscreen"></label>
               <label class="row"><span class="rowIcon"><svg class="i"><use href="icons.svg#speaker-off"/></svg></span><span class="grow"><span class="title">Mute tabs that make sound</span><span class="muted small block">Unmuted when you unlock.</span></span><input class="switch" role="switch" type="checkbox" id="muteTabs"></label>
             </div>

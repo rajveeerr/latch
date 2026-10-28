@@ -197,3 +197,6 @@ body[data-ob]::before { opacity: 1; }
 .pick[aria-checked="true"]::after { content: ""; position: absolute; top: 18px; right: 18px; width: 20px; height: 20px; border-radius: 50%; background: var(--accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 12.5 4 4 8-9'/%3E%3C/svg%3E") center/12px no-repeat; box-shadow: 0 1px 3px rgba(0, 0, 0, .3); }
 .pick:focus-visible { outline: 2px solid var(--surface); box-shadow: 0 0 0 4px var(--accent); }
 @media (max-width: 640px) { .picker.three { grid-template-columns: 1fr; } .picker.two { grid-template-columns: 1fr; } .pick .mascotPv { height: 120px; } }
+
+/* Sub-heading inside a settings group ("How it locks") */
+.group > .subhead { margin: 26px 2px 10px; font-size: 14px; font-weight: 600; letter-spacing: -.01em; }

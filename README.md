@@ -19,7 +19,7 @@
 <p align="center">
   <a href="https://github.com/rajveeerr/latch/actions/workflows/test.yml"><img src="https://github.com/rajveeerr/latch/actions/workflows/test.yml/badge.svg" alt="tests"></a>
   <img src="https://img.shields.io/badge/download-207%20KB-2b4fdb" alt="206 KB">
-  <img src="https://img.shields.io/badge/permissions-5-2b4fdb" alt="5 permissions">
+  <img src="https://img.shields.io/badge/permissions-6-2b4fdb" alt="6 permissions">
   <img src="https://img.shields.io/badge/network-none-2b4fdb" alt="no network">
   <img src="https://img.shields.io/badge/license-MIT-14171f" alt="MIT">
 </p>
@@ -70,6 +70,16 @@ Latch is not in a web store yet, so you load it as an unpacked extension.
 
 Latch locks the profile it is installed in. Install it in each profile you want to protect. `Control+Shift+L` locks instantly.
 
+### The Mac helper (recommended on macOS)
+
+A page cannot draw over a browser's tab strip and address bar, and a browser extension cannot minimize or move windows without jumping them around. The helper is a tiny Mac app (about 120 KB, built from `native/helper/main.swift`) that the browser starts only while Latch is locked. It draws an opaque lock exactly over each window of that profile, tab strip and address bar included, over full-screen windows too, with no new browser window and nothing minimized or moved. You type the passcode into the helper, never into a web page; the extension still checks it.
+
+```sh
+./native/install.sh      # builds the helper (needs the Xcode command line tools) and tells your browsers it may start
+```
+
+Then reload Latch at `brave://extensions`, open Latch's settings and choose **Native Mac helper**; the **Check** button tells you whether it was found. `./native/uninstall.sh` removes it. Without the helper Latch locks on the page instead, and says so in Activity.
+
 ## Pair it with your Mac's lock
 
 Latch covers your browser. macOS covers everything else. Press **Control + Command + Q** to lock your Mac whenever you step away, and in System Settings turn on *Require password immediately* after sleep or screen saver. Together they cover the whole machine.
@@ -83,7 +93,7 @@ Measured on a MacBook with Chromium:
 | Download | **207 KB** (fonts and art included) |
 | Script on every web page | **5 KB**, which only draws a cover and reads nothing |
 | Lock screen first paint | **~70 ms** (popup ~60 ms, settings ~90 ms) |
-| Permissions | **5**: `storage`, `idle`, `alarms`, `scripting`, `tabGroups` (why: see below) |
+| Permissions | **6**: `storage`, `idle`, `alarms`, `scripting`, `tabGroups`, `nativeMessaging` (why: see below) |
 | Network, accounts, analytics | **none** |
 
 <details>
@@ -101,15 +111,16 @@ Other lockers are worth knowing about: [Locksy](https://www.locksy.dev/) (per-ta
 - `alarms`: the timer for "locks after the browser has been in the background".
 - `scripting` and all sites: puts the lock cover into tabs that were already open (a page script only loads in pages opened after an extension is installed). This is why the browser says Latch can "read and change data on all sites". It reads nothing and sends nothing.
 - `tabGroups`: only for the optional strict mode, to put tab groups (name, colour, collapsed) back when it reopens windows.
+- `nativeMessaging`: only to talk to the optional Mac helper below. Without the helper installed it does nothing.
 
 </details>
 
 <details>
 <summary><b>How windows are hidden, and strict mode</b></summary>
 
-**By default the lock sits on the window itself.** Every tab gets an opaque cover with the unlock screen in it, so you type the passcode right where your window is. Nothing opens, moves, minimizes or leaves full screen, so there is nothing to jump around, and your window sizes and positions stay exactly as they are. The unlock screen is a frame of one of Latch's own pages, so a website cannot read what you type; it is only loaded in the tab you are looking at. A window whose visible tab cannot hold a cover (the new tab page, `brave://` settings, the web store) is minimized instead, and if no window can hold the cover Latch opens a small unlock window, so there is always a way back in. Touch ID opens that small window too, because it is tied to Latch's own address.
+**Three ways to lock, chosen in settings.** *Native Mac helper* (the default when installed): the helper covers each window, tab strip included, and nothing in the browser moves. *On the page*: every visible tab gets an opaque cover with the unlock screen in it, so you type the passcode right where your window is; nothing opens, moves or minimizes, but a page cannot cover the tab strip. The unlock screen is a frame of one of Latch's own pages, so a website cannot read what you type; it is only loaded in the tab you are looking at. *Separate lock window*: a window covers the screen and this profile's windows are minimized. With the page cover, a window whose visible tab cannot hold a cover (the new tab page, `brave://` settings, the web store) is minimized instead, and if no window can hold the cover Latch opens a small unlock window, so there is always a way back in. Touch ID opens that small window too, because it is tied to Latch's own address.
 
-The **tab strip and address bar stay visible** under an overlay, which a page cannot cover. If that matters more to you than staying put, turn off **Lock on the window itself** in settings: a separate lock window rises over the screen and this profile's windows are minimized (a full-screen window steps out of full screen first). On unlock the lock window closes first, normal windows return, full-screen windows re-enter full screen last, and focus goes back to the window you were using. Latch only ever sees and touches the profile it is installed in.
+The **tab strip and address bar stay visible** under the page cover, which a page cannot draw over (the helper does not have this limit). If you have no helper and that matters more to you than staying put, choose **Separate lock window** in settings: a lock window rises over the screen and this profile's windows are minimized (a full-screen window steps out of full screen first). On unlock the lock window closes first, normal windows return, full-screen windows re-enter full screen last, and focus goes back to the window you were using. Latch only ever sees and touches the profile it is installed in.
 
 **Stage Manager and Mission Control** can show live thumbnails of windows that are not minimized. With the overlay, a thumbnail is a picture of the covered window, so it shows the lock screen and the tab strip, not your page (not yet checked on a real Stage Manager strip). Measured in Brave 156 with Stage Manager on: some windows stayed in the side strip as small thumbnails while locked, even after being asked to minimize again. Their pages show the lock cover, but the tab strip is still part of the picture. Setting **Lock window: full screen** puts the lock in its own Space, which is the best an extension can do (not yet confirmed to hide the strip). For a stricter result, macOS has an opt-in **Hide windows completely** switch: windows are closed while locked and reopened on unlock, so nothing shows anywhere. It never closes a window with unsaved typing or sound, saves what it closed before closing it, and reports anything it cannot reopen. It is riskier for your tabs than the default, which is why it is off. **Brave currently refuses it**: closing windows from an extension asks for confirmation on multi-tab windows and, in testing, crashed Brave 155 when repeated. Latch checks this when you switch it on. More on the options that were weighed: [docs/approaches.md](docs/approaches.md). What to test by hand: [docs/manual-tests.md](docs/manual-tests.md).
 

@@ -1,0 +1,162 @@
+// The Latch helper end to end: the real helper program, started by a real browser through native messaging, draws a lock
+// over each window, takes the passcode, and goes away on unlock. macOS only.
+//   node test/e2e/native.mjs        (Chromium; set CHROMIUM_PATH if needed)
+import { chromium } from 'playwright';
+import http from 'node:http';
+import { execFileSync, spawn } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+
+if (process.platform !== 'darwin') { console.log('native helper test: macOS only, skipped'); process.exit(0); }
+
+const root = path.resolve(import.meta.dirname, '../..');
+const PASS = 'native pass 42';
+const built = path.join(root, 'native/build/latch-helper');
+execFileSync('sh', [path.join(root, 'native/build.sh')], { stdio: 'ignore' });
+// Run a copy from a plain folder, like install.sh does: a browser may not be allowed to start programs inside Desktop or Documents.
+const copyDir = mkdtempSync(path.join(tmpdir(), 'latch-helper-'));
+const helper = path.join(copyDir, 'latch-helper');
+execFileSync('cp', [built, helper]);
+
+// The id an unpacked extension gets: SHA-256 of its folder path, written with the letters a-p.
+const extId = createHash('sha256').update(root).digest('hex').slice(0, 32).replace(/./g, (c) => String.fromCharCode(97 + parseInt(c, 16)));
+
+const server = http.createServer((q, r) => { r.writeHead(200, { 'content-type': 'text/html' }); r.end(`<title>${q.url}</title><body>native test page ${q.url}`); });
+await new Promise((r) => server.listen(0, '127.0.0.1', r));
+const site = (n) => `http://127.0.0.1:${server.address().port}/?t=${n}`;
+
+// A small tool that lists a process's windows as the window server sees them, on screen or not.
+const DUMP = path.join(tmpdir(), 'latch-native-dump');
+if (!existsSync(DUMP)) {
+  writeFileSync(`${DUMP}.swift`, 'import Cocoa\nlet pid = Int32(CommandLine.arguments[1])!\nlet on = Set((CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as! [[String: Any]]).map { $0[kCGWindowNumber as String] as! Int })\nfor w in CGWindowListCopyWindowInfo([.optionAll], kCGNullWindowID) as! [[String: Any]] where (w[kCGWindowOwnerPID as String] as? Int32) == pid && (w[kCGWindowLayer as String] as? Int) == 0 { let b = w[kCGWindowBounds as String] as! [String: Any]; let n = w[kCGWindowNumber as String] as! Int; print("\\(n) \\(on.contains(n) ? 1 : 0) \\(Int(b["X"] as! Double)) \\(Int(b["Y"] as! Double)) \\(Int(b["Width"] as! Double)) \\(Int(b["Height"] as! Double))") }\n');
+  execFileSync('swiftc', [`${DUMP}.swift`, '-o', DUMP], { stdio: 'ignore' });
+}
+const windowsOf = (pid) => execFileSync(DUMP, [String(pid)], { encoding: 'utf8' }).split('\n').filter(Boolean).map((l) => { const [n, on, x, y, w, h] = l.split(' ').map(Number); return { n, on: on === 1, x, y, w, h }; }).filter((w) => w.on && w.w > 120 && w.h > 80);
+const helperPids = () => { try { return execFileSync('pgrep', ['-f', helper], { encoding: 'utf8' }).trim().split('\n').filter(Boolean).map(Number); } catch { return []; } };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function until(fn, what, ms = 10000) { const end = Date.now() + ms; let last; while (Date.now() < end) { try { last = await fn(); if (last) return last; } catch (e) { last = e; } await sleep(100); } throw new Error(`timed out waiting for: ${what} (${last})`); }
+
+const profile = mkdtempSync(path.join(tmpdir(), 'latch-native-'));
+let context, brave, wroteHostFile, passed = 0, failed = 0;
+async function check(name, fn) { try { await fn(); passed++; console.log(`  ✓ ${name}`); } catch (e) { failed++; console.log(`  ✗ ${name}\n      ${String(e.message || e).split('\n')[0]}`); } }
+
+try {
+  process.env.LATCH_HELPER_TEST = '1';                       // the helper inherits the browser's environment
+  const flags = [`--disable-extensions-except=${root}`, `--load-extension=${root}`];
+  if (process.env.BRAVE) {                                    // BRAVE=1: the same checks in real Brave, throwaway profile
+    brave = spawn('/Applications/Brave Browser.app/Contents/MacOS/Brave Browser', [`--user-data-dir=${profile}`, '--remote-debugging-port=9343', '--no-first-run', '--no-default-browser-check', '--disable-features=DisableLoadExtensionCommandLineSwitch', ...flags, 'about:blank'], { stdio: 'ignore' });
+    await sleep(6000);
+    context = (await chromium.connectOverCDP('http://127.0.0.1:9343')).contexts()[0];
+  } else {
+    context = await chromium.launchPersistentContext(profile, { executablePath: process.env.CHROMIUM_PATH || undefined, headless: false, args: flags });
+  }
+  const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
+  assert.equal(new URL(worker.url()).host, extId, 'the id the installer would compute matches the real one');
+  const admin = context.pages().find((p) => p.url().includes('options.html')) || await context.newPage();
+  if (!admin.url().includes('options.html')) await admin.goto(`chrome-extension://${extId}/ui/options.html`);
+  const send = (m) => admin.evaluate((msg) => chrome.runtime.sendMessage(msg), m);
+  const W = (fn, ...args) => worker.evaluate(([f, a]) => new Function('return ' + f)()(...a), [fn.toString(), args]);
+  assert.equal((await send({ type: 'setPasscode', passcode: PASS })).ok, true);
+  assert.equal((await send({ type: 'saveSettings', settings: { autoLockMinutes: 0, lockOnStartup: false, lockOnSystemLock: false, lockStyle: 'native' }, passcode: PASS })).ok, true);
+  const browserPid = brave ? brave.pid : Number(execFileSync('pgrep', ['-f', `user-data-dir=${profile}`], { encoding: 'utf8' }).trim().split('\n').filter(Boolean)[0]);
+  const flag = () => W(async () => (await chrome.storage.local.get('state')).state.locked === true);
+  const popups = () => W(async () => (await chrome.windows.getAll({ windowTypes: ['popup'] })).length);
+  const create = (o) => W(async (opts) => (await chrome.windows.create(opts)).id, o);
+  const info = (id) => W(async (i) => { const w = await chrome.windows.get(i); return { state: w.state, left: w.left, top: w.top, width: w.width, height: w.height }; }, id);
+  const events = async () => (await send({ type: 'getActivity' })).events.map((e) => e.detail);
+
+  // ---- 1. no helper installed: the lock still works, drawn in the pages ----
+  await check('without the helper installed, a native lock falls back to the in-page overlay and says so', async () => {
+    const w = await create({ url: site('fallback'), left: 60, top: 60, width: 700, height: 500, state: 'normal' });
+    const page = await until(() => context.pages().find((p) => p.url().endsWith('?t=fallback')), 'the page', 10000); await sleep(500);
+    assert.equal((await send({ type: 'lock' })).ok, true);
+    await until(flag, 'locked');
+    await until(async () => page.evaluate(() => Boolean(document.querySelector('[data-latch-cover]'))), 'the page to be covered');
+    await until(() => page.frames().find((f) => f.url().includes('ui/lock.html')), 'the in-page unlock screen');
+    assert.ok((await events()).some((e) => e.includes('helper is not running')), 'Activity says the helper was not used');
+    assert.equal((await send({ type: 'unlock', passcode: PASS })).ok, true);
+    await until(async () => !(await flag()), 'unlocked');
+    await W((i) => chrome.windows.remove(i), w);
+  });
+
+  // ---- 2. install the helper for this profile only, as install.sh would for a real one ----
+  // Chromium reads hosts from the profile folder. A throwaway-profile Brave reads a real folder instead, so the Brave run puts the
+  // same small file there for the length of the test, and only if nothing is there already (it never overwrites a real install).
+  const manifest = JSON.stringify({ name: 'com.latch.helper', description: 'test', path: helper, type: 'stdio', allowed_origins: [`chrome-extension://${extId}/`] });
+  const hosts = brave ? path.join(homedir(), 'Library/Application Support/Google/Chrome/NativeMessagingHosts') : path.join(profile, 'NativeMessagingHosts');   // a throwaway-profile Brave reads Chrome's folder
+  mkdirSync(hosts, { recursive: true });
+  const hostFile = path.join(hosts, 'com.latch.helper.json');
+  if (!existsSync(hostFile)) { writeFileSync(hostFile, manifest); wroteHostFile = hostFile; }
+  await check('the helper starts, says hello, and settings can see it', async () => {
+    assert.equal((await send({ type: 'probeHelper' })).ok, true);
+    await until(() => helperPids().length === 0, 'the probe helper to quit again', 6000);
+  });
+
+  let a;
+  await check('lock: the helper puts a lock exactly over each window; no window opens; nothing moves or minimizes', async () => {
+    a = await create({ url: site('a'), left: 90, top: 90, width: 800, height: 560, state: 'normal' });
+    await until(() => context.pages().find((p) => p.url().endsWith('?t=a')), 'the page', 10000); await sleep(600);
+    const before = await info(a); const popupsBefore = await popups();
+    assert.equal((await send({ type: 'lock' })).ok, true);
+    await until(flag, 'locked');
+    const pid = await until(() => helperPids().at(-1), 'the helper to be running', 6000);
+    const overlays = await until(() => { const o = windowsOf(pid); return o.length >= 2 ? o : null; }, 'overlays on screen', 6000);
+    const browserWins = windowsOf(browserPid);
+    for (const bw of browserWins) {
+      assert.ok(overlays.some((o) => Math.abs(o.x - bw.x) <= 3 && Math.abs(o.y - bw.y) <= 3 && Math.abs(o.w - bw.w) <= 3 && Math.abs(o.h - bw.h) <= 3), `a lock sits exactly over the window at ${bw.x},${bw.y} ${bw.w}x${bw.h}`);
+    }
+    if (process.env.SHOT) { await sleep(500); await send({ type: 'helperSelfTest', snapshot: process.env.SHOT }); await sleep(500); }   // the lock screen only, never the display
+    assert.equal(await popups(), popupsBefore, 'no lock window opened');
+    const after = await info(a);
+    assert.deepEqual(after, before, 'the window did not move, resize or minimize');
+  });
+
+  await check('a wrong passcode typed into the helper keeps it locked and is counted', async () => {
+    assert.equal((await send({ type: 'helperSelfTest', passcode: 'not it' })).ok, true);
+    await until(async () => (await send({ type: 'getActivity' })).events.some((e) => e.type === 'failed'), 'the failed attempt to be recorded', 6000);
+    assert.equal(await flag(), true, 'still locked');
+    assert.ok(helperPids().length >= 1, 'the helper is still there');
+  });
+
+  await check('the right passcode unlocks, the lock goes away, and the helper quits', async () => {
+    assert.equal((await send({ type: 'helperSelfTest', passcode: PASS })).ok, true);
+    await until(async () => !(await flag()), 'unlocked', 6000);
+    const pids = helperPids();
+    await until(() => helperPids().length === 0, 'the helper to quit', 8000);
+    assert.ok(pids.length >= 1);
+    assert.deepEqual(await info(a), await info(a));
+  });
+
+  await check('a window in full screen is covered where it is, with no window opened', async () => {
+    const f = await create({ url: site('fs'), left: 50, top: 50, width: 900, height: 600, state: 'normal' });
+    await W((i) => chrome.windows.update(i, { state: 'fullscreen' }), f);
+    await until(async () => (await info(f)).state === 'fullscreen', 'fullscreen', 20000); await sleep(1200);
+    const popupsBefore = await popups();
+    assert.equal((await send({ type: 'lock' })).ok, true);
+    await until(flag, 'locked');
+    const pid = await until(() => helperPids().at(-1), 'the helper', 6000);
+    const screenW = await until(() => { const o = windowsOf(pid).sort((x, y) => y.w * y.h - x.w * x.h)[0]; return o && o.w >= 1000 ? o : null; }, 'a screen-sized lock over the full-screen window', 8000);
+    assert.ok(screenW.w >= 1000);
+    assert.equal(await popups(), popupsBefore);
+    assert.equal((await info(f)).state, 'fullscreen', 'still in full screen');
+    assert.equal((await send({ type: 'helperSelfTest', passcode: PASS })).ok, true);
+    await until(async () => !(await flag()), 'unlocked', 6000);
+    assert.equal((await info(f)).state, 'fullscreen', 'and still in full screen after unlocking');
+    await W((i) => chrome.windows.remove(i), f);
+  });
+} catch (err) {
+  failed++; console.log('FAILED:', err.message || err);
+} finally {
+  rmSync(copyDir, { recursive: true, force: true });
+  if (wroteHostFile) rmSync(wroteHostFile, { force: true });        // leave the real Brave folder as it was
+  for (const pid of helperPids()) { try { process.kill(pid); } catch { /* gone */ } }
+  if (brave) { try { brave.kill(); } catch { /* gone */ } await sleep(1500); } else await context?.close().catch(() => {});
+  server.close();
+  rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 400 });
+}
+console.log(`\n${passed} passed, ${failed} failed.`);
+process.exitCode = failed ? 1 : 0;

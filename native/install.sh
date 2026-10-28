@@ -1,0 +1,46 @@
+#!/bin/sh
+# Installs the Latch helper for the browsers found on this Mac. Run it yourself, from the Latch folder:
+#   ./native/install.sh            (an unpacked Latch: the extension id is worked out from this folder)
+#   ./native/install.sh <id>       (Latch installed from a store: pass its id)
+# It writes only to ~/Library/Application Support (the helper, and one small file per browser saying who may start it).
+set -eu
+HERE=$(cd "$(dirname "$0")" && pwd)
+ROOT=$(cd "$HERE/.." && pwd -P)
+ID=${1:-}
+if [ -z "$ID" ]; then
+  # An unpacked extension's id is the SHA-256 of its folder path, written with the letters a-p.
+  ID=$(printf %s "$ROOT" | shasum -a 256 | cut -c1-32 | tr '0-9a-f' 'a-p')
+fi
+
+sh "$HERE/build.sh"
+
+DEST="$HOME/Library/Application Support/Latch"
+mkdir -p "$DEST"
+cp "$HERE/build/latch-helper" "$DEST/latch-helper"
+chmod 755 "$DEST/latch-helper"
+
+write_manifest() {   # $1 = the browser's NativeMessagingHosts folder
+  mkdir -p "$1"
+  cat > "$1/com.latch.helper.json" <<JSON
+{
+  "name": "com.latch.helper",
+  "description": "Latch lock screen helper",
+  "path": "$DEST/latch-helper",
+  "type": "stdio",
+  "allowed_origins": ["chrome-extension://$ID/"]
+}
+JSON
+  echo "  allowed Latch ($ID) in: $1"
+}
+
+SUPPORT="$HOME/Library/Application Support"
+if [ -n "${LATCH_HOSTS_DIR:-}" ]; then            # for tests: one folder only
+  write_manifest "$LATCH_HOSTS_DIR"
+else
+  FOUND=0
+  for BROWSER in "BraveSoftware/Brave-Browser" "Google/Chrome" "Chromium" "Microsoft Edge"; do
+    if [ -d "$SUPPORT/$BROWSER" ]; then write_manifest "$SUPPORT/$BROWSER/NativeMessagingHosts"; FOUND=1; fi
+  done
+  [ "$FOUND" = 1 ] || echo "  no supported browser found in $SUPPORT"
+fi
+echo "Done. In the browser, reload Latch (brave://extensions), then pick \"Native Mac helper\" in Latch's settings."

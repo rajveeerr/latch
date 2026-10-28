@@ -55,7 +55,7 @@ test('windows.remove: only our own lock window', () => {
 
 test('only the permissions Latch needs are requested', () => {
   const manifest = JSON.parse(read('manifest.json'));
-  assert.deepEqual([...manifest.permissions].sort(), ['alarms', 'idle', 'scripting', 'storage', 'tabGroups']);
+  assert.deepEqual([...manifest.permissions].sort(), ['alarms', 'idle', 'nativeMessaging', 'scripting', 'storage', 'tabGroups']);   // nativeMessaging: only to talk to the optional Latch helper
   assert.deepEqual(manifest.host_permissions, ['<all_urls>']);          // needed to put the cover into tabs that were already open
 });
 

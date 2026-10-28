@@ -8,8 +8,9 @@
   if (window.__latchCover && window.__latchCover.alive()) return;
   window.__latchCover = { alive };
   for (const stranded of document.querySelectorAll('[data-latch-cover]')) stranded.remove();   // a cover the dead copy could not remove
-  let settings = { coverPages: true, pauseMedia: true, scope: 'profile', lockStyle: 'overlay' };
+  let settings = { coverPages: true, pauseMedia: true, scope: 'profile', lockStyle: 'native' };
   let locked = false;
+  let nativeUp = false;    // the Latch helper is drawing the unlock screen, so this page need not
   let host = null;
   let root = null;
   let frame = null;        // the unlock screen (an extension page) shown inside the cover, only in the tab being looked at
@@ -76,7 +77,7 @@
   // The unlock screen lives in an iframe of one of our own pages, not in this page: a page's own scripts can listen to key
   // presses in its document, but not inside a frame from another origin, so the passcode cannot be read by the site.
   // It is only loaded while this tab is visible, so fifty locked tabs do not load fifty lock screens.
-  const wantsFrame = () => applies() && settings.lockStyle !== 'window' && document.visibilityState === 'visible';
+  const wantsFrame = () => applies() && (settings.lockStyle === 'overlay' || (settings.lockStyle === 'native' && !nativeUp)) && document.visibilityState === 'visible';
   function syncFrame() {
     if (!host || !host.isConnected || !root) return;
     if (!wantsFrame()) { dropFrame(); return; }
@@ -145,7 +146,9 @@
   function load(values) {
     settings = { ...settings, ...(values.settings || {}) };
     locked = Boolean(values.state && values.state.locked);
+    nativeUp = Boolean(values.state && values.state.nativeUp);
     apply();
+    syncFrame();          // the helper may have just started or stopped: show or drop the in-page unlock screen
   }
 
   // The worker asks the top frame whether it is really covering the page, so it can tell if a window is exposed.

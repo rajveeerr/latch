@@ -1,0 +1,324 @@
+// Latch helper: a small macOS program the browser starts through native messaging.
+//
+// It does two jobs and nothing else:
+//   1. Talks to the extension over stdin/stdout (a 4-byte length, then JSON, in both directions).
+//   2. While the profile is locked, keeps an opaque lock window exactly over each of this profile's browser windows,
+//      tab strip and address bar included. The passcode is typed into this program, never into a web page, and is
+//      handed to the extension, which is the only thing that knows whether it is right.
+//
+// It never touches the browser's windows, tabs or data: it only draws its own windows on top.
+import Cocoa
+
+let protocolVersion = 1
+let browserPid = getppid()                       // the browser started us, so it is our parent
+let testMode = ProcessInfo.processInfo.environment["LATCH_HELPER_TEST"] == "1"
+
+// MARK: - native messaging
+
+let writeLock = NSLock()
+func send(_ object: [String: Any]) {
+    guard let body = try? JSONSerialization.data(withJSONObject: object) else { return }
+    var length = UInt32(body.count).littleEndian
+    var packet = Data(bytes: &length, count: 4)
+    packet.append(body)
+    writeLock.lock(); defer { writeLock.unlock() }
+    FileHandle.standardOutput.write(packet)
+}
+
+func readExactly(_ count: Int) -> Data? {
+    var data = Data()
+    while data.count < count {
+        guard let chunk = try? FileHandle.standardInput.read(upToCount: count - data.count), !chunk.isEmpty else { return nil }
+        data.append(chunk)
+    }
+    return data
+}
+
+func readMessage() -> [String: Any]? {
+    guard let header = readExactly(4) else { return nil }
+    let length = header.withUnsafeBytes { Int(UInt32(littleEndian: $0.loadUnaligned(as: UInt32.self))) }
+    guard length > 0, length < 1_048_576, let body = readExactly(length) else { return nil }
+    return (try? JSONSerialization.jsonObject(with: body)) as? [String: Any]
+}
+
+// MARK: - what one browser window looks like to us
+
+struct ProfileWindow {
+    var left: Double, top: Double, width: Double, height: Double
+    var fullscreen: Bool
+}
+
+func parseWindows(_ raw: Any?) -> [ProfileWindow] {
+    guard let list = raw as? [[String: Any]] else { return [] }
+    return list.compactMap { item in
+        guard let l = (item["left"] as? NSNumber)?.doubleValue, let t = (item["top"] as? NSNumber)?.doubleValue,
+              let w = (item["width"] as? NSNumber)?.doubleValue, let h = (item["height"] as? NSNumber)?.doubleValue else { return nil }
+        return ProfileWindow(left: l, top: t, width: w, height: h, fullscreen: (item["fullscreen"] as? Bool) ?? false)
+    }
+}
+
+// MARK: - the lock screen drawn on every overlay
+
+extension NSColor {
+    static func dynamic(light: NSColor, dark: NSColor) -> NSColor {
+        NSColor(name: nil) { $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light }
+    }
+}
+
+final class LockPanel: NSView {
+    let field = NSSecureTextField()
+    let message = NSTextField(labelWithString: "")
+    let button = NSButton(title: "Unlock", target: nil, action: nil)
+    let touch = NSButton(title: "Use Touch ID", target: nil, action: nil)
+    var onSubmit: ((String) -> Void)?
+    var onTouch: (() -> Void)?
+    private var countdown: Timer?
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.dynamic(light: NSColor(red: 0.965, green: 0.957, blue: 0.937, alpha: 1),
+                                                 dark: NSColor(red: 0.043, green: 0.055, blue: 0.086, alpha: 1)).cgColor
+
+        let icon = NSImageView()
+        if let image = NSImage(systemSymbolName: "lock.fill", accessibilityDescription: "Locked") {
+            icon.image = image.withSymbolConfiguration(.init(pointSize: 34, weight: .regular))
+        }
+        icon.contentTintColor = NSColor.dynamic(light: NSColor(red: 0.169, green: 0.31, blue: 0.859, alpha: 1),
+                                                dark: NSColor(red: 0.486, green: 0.596, blue: 1, alpha: 1))
+
+        let title = NSTextField(labelWithString: "This window is locked")
+        title.font = .systemFont(ofSize: 22, weight: .semibold)
+        title.textColor = .labelColor
+        let sub = NSTextField(labelWithString: "Your tabs, windows and groups are untouched.")
+        sub.font = .systemFont(ofSize: 13)
+        sub.textColor = .secondaryLabelColor
+
+        field.placeholderString = "Passcode"
+        field.font = .systemFont(ofSize: 15)
+        field.alignment = .center
+        field.focusRingType = .default
+        field.target = self
+        field.action = #selector(submit)
+        field.translatesAutoresizingMaskIntoConstraints = false
+        field.widthAnchor.constraint(equalToConstant: 280).isActive = true
+        field.heightAnchor.constraint(equalToConstant: 34).isActive = true
+
+        button.bezelStyle = .rounded
+        button.controlSize = .large
+        button.keyEquivalent = "\r"
+        button.target = self
+        button.action = #selector(submit)
+
+        touch.bezelStyle = .inline
+        touch.isBordered = false
+        touch.contentTintColor = .secondaryLabelColor
+        touch.font = .systemFont(ofSize: 12)
+        touch.target = self
+        touch.action = #selector(useTouch)
+
+        message.font = .systemFont(ofSize: 12)
+        message.textColor = .systemRed
+        message.alignment = .center
+        message.maximumNumberOfLines = 2
+
+        let stack = NSStackView(views: [icon, title, sub, field, button, message, touch])
+        stack.orientation = .vertical
+        stack.alignment = .centerX
+        stack.spacing = 12
+        stack.setCustomSpacing(6, after: title)
+        stack.setCustomSpacing(22, after: sub)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.centerXAnchor.constraint(equalTo: centerXAnchor),
+            stack.centerYAnchor.constraint(equalTo: centerYAnchor, constant: -10),
+        ])
+    }
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    @objc func submit() {
+        guard field.isEnabled, !field.stringValue.isEmpty else { return }
+        let typed = field.stringValue
+        field.stringValue = ""
+        message.stringValue = ""
+        setBusy(true)
+        onSubmit?(typed)
+    }
+    @objc func useTouch() { onTouch?() }
+
+    func setBusy(_ busy: Bool) { field.isEnabled = !busy; button.isEnabled = !busy }
+
+    func showWrong(retryAfterMs: Int?) {
+        countdown?.invalidate()
+        if let wait = retryAfterMs, wait > 0 {
+            var left = Int((Double(wait) / 1000).rounded(.up))
+            message.stringValue = "Too many tries. Wait \(left) s."
+            field.isEnabled = false; button.isEnabled = false
+            countdown = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] timer in
+                left -= 1
+                guard let self else { return timer.invalidate() }
+                if left <= 0 { timer.invalidate(); self.message.stringValue = ""; self.setBusy(false); self.window?.makeFirstResponder(self.field) }
+                else { self.message.stringValue = "Too many tries. Wait \(left) s." }
+            }
+            return
+        }
+        message.stringValue = "Wrong passcode. Try again."
+        setBusy(false)
+        window?.makeFirstResponder(field)
+        field.wantsLayer = true
+        let base = field.layer?.position.x ?? 0
+        let shake = CAKeyframeAnimation(keyPath: "position.x")
+        shake.values = [0, -9, 9, -6, 6, -3, 3, 0].map { base + CGFloat($0) }
+        shake.duration = 0.4
+        field.layer?.add(shake, forKey: "shake")
+    }
+
+    func reset() { countdown?.invalidate(); field.stringValue = ""; message.stringValue = ""; setBusy(false) }
+}
+
+final class OverlayWindow: NSWindow {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+}
+
+// MARK: - overlays kept exactly over this profile's windows
+
+final class Overlays {
+    private var windows: [Int: OverlayWindow] = [:]      // keyed by the browser window's number in the window server
+    private var profile: [ProfileWindow] = []
+    private(set) var locked = false
+    private var timer: Timer?
+    private var keyed = false
+
+    var primaryHeight: CGFloat { NSScreen.screens.first?.frame.height ?? 0 }
+
+    func lock(_ list: [ProfileWindow]) {
+        profile = list
+        locked = true
+        keyed = false
+        tick()
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { [weak self] _ in self?.tick() }
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main) { [weak self] _ in self?.tick() }
+    }
+
+    func update(_ list: [ProfileWindow]) { profile = list; if locked { tick() } }
+
+    func unlock() {
+        locked = false
+        timer?.invalidate(); timer = nil
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
+        for window in windows.values { (window.contentView as? LockPanel)?.reset(); window.orderOut(nil); window.close() }
+        windows.removeAll()
+        NSRunningApplication(processIdentifier: browserPid)?.activate()      // give the browser its focus back
+    }
+
+    func showWrong(retryAfterMs: Int?) { for window in windows.values { (window.contentView as? LockPanel)?.showWrong(retryAfterMs: retryAfterMs) } }
+
+    func submitFromTest(_ passcode: String) { send(["event": "attempt", "passcode": passcode]) }
+
+    // Test only: draws the first lock screen into a PNG (just that view, never the screen), so its look can be checked.
+    func snapshot(to path: String) {
+        guard let view = windows.values.first?.contentView, let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
+        view.cacheDisplay(in: view.bounds, to: rep)
+        try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+    }
+
+    // Does this browser window (as the window server reports it) belong to the locked profile?
+    private func belongs(_ bounds: CGRect) -> Bool {
+        for p in profile {
+            if p.fullscreen {
+                if NSScreen.screens.contains(where: { abs($0.frame.width - bounds.width) <= 2 && abs($0.frame.height - bounds.height) <= 2 }) { return true }
+            } else if abs(p.left - bounds.minX) <= 8 && abs(p.top - bounds.minY) <= 8 && abs(p.width - bounds.width) <= 8 && abs(p.height - bounds.height) <= 8 {
+                return true
+            }
+        }
+        return false
+    }
+
+    private func cocoaRect(_ b: CGRect) -> NSRect { NSRect(x: b.minX, y: primaryHeight - b.maxY, width: b.width, height: b.height) }
+
+    private func makeWindow(_ rect: NSRect) -> OverlayWindow {
+        let window = OverlayWindow(contentRect: rect, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isOpaque = true
+        window.hasShadow = false
+        window.level = .normal                                         // stacked directly above the browser window, not above everything
+        window.collectionBehavior = [.fullScreenAuxiliary, .ignoresCycle]   // may live in a full-screen Space; not shown in the app switcher
+        window.isReleasedWhenClosed = false
+        window.animationBehavior = .none
+        let panel = LockPanel(frame: NSRect(origin: .zero, size: rect.size))
+        panel.onSubmit = { passcode in send(["event": "attempt", "passcode": passcode]) }
+        panel.onTouch = { send(["event": "touchid"]) }
+        window.contentView = panel
+        window.setFrame(rect, display: true)
+        return window
+    }
+
+    // Runs several times a second while locked: one overlay per visible browser window of this profile, kept the same
+    // place and size, so a window that opens, moves or changes Space is covered at once.
+    func tick() {
+        guard locked else { return }
+        let info = (CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]]) ?? []
+        var seen = Set<Int>()
+        for entry in info {
+            guard (entry[kCGWindowOwnerPID as String] as? Int32) == browserPid, (entry[kCGWindowLayer as String] as? Int) == 0,
+                  let number = entry[kCGWindowNumber as String] as? Int,
+                  let dictionary = entry[kCGWindowBounds as String] as? NSDictionary,
+                  let bounds = CGRect(dictionaryRepresentation: dictionary) else { continue }
+            guard bounds.width > 120, bounds.height > 80, belongs(bounds) else { continue }
+            seen.insert(number)
+            let rect = cocoaRect(bounds)
+            if let existing = windows[number] {
+                if existing.frame != rect { existing.setFrame(rect, display: true) }
+                existing.order(.above, relativeTo: number)
+            } else {
+                let window = makeWindow(rect)
+                windows[number] = window
+                if !keyed {                                            // the front-most one takes the keyboard
+                    keyed = true
+                    NSApp.activate(ignoringOtherApps: true)
+                    window.makeKeyAndOrderFront(nil)
+                    window.makeFirstResponder((window.contentView as? LockPanel)?.field)
+                } else {
+                    window.order(.above, relativeTo: number)
+                }
+            }
+        }
+        for (number, window) in windows where !seen.contains(number) { window.orderOut(nil); window.close(); windows[number] = nil }
+    }
+}
+
+// MARK: - wiring
+
+let overlays = Overlays()
+
+func handle(_ message: [String: Any]) {
+    switch message["cmd"] as? String {
+    case "lock": overlays.lock(parseWindows(message["windows"]))
+    case "update": overlays.update(parseWindows(message["windows"]))
+    case "result": overlays.showWrong(retryAfterMs: (message["retryAfterMs"] as? NSNumber)?.intValue)
+    case "unlock": overlays.unlock()
+    case "ping": send(["event": "ready", "version": protocolVersion])
+    case "test-submit": if testMode, let passcode = message["passcode"] as? String { overlays.submitFromTest(passcode) }
+    case "test-snapshot": if testMode, let file = message["path"] as? String { overlays.snapshot(to: file) }
+    case "quit": exit(0)
+    default: break
+    }
+}
+
+let app = NSApplication.shared
+app.setActivationPolicy(.accessory)                 // no Dock icon, no menu bar
+
+DispatchQueue.main.async { send(["event": "ready", "version": protocolVersion]) }
+
+Thread.detachNewThread {
+    while let message = readMessage() { DispatchQueue.main.async { handle(message) } }
+    // The browser closed the connection (it quit, or the extension restarted). If the lock is up, leave it for a few
+    // seconds so a restarting extension can take over without a gap, then go.
+    DispatchQueue.main.async {
+        if overlays.locked { DispatchQueue.main.asyncAfter(deadline: .now() + 3) { exit(0) } } else { exit(0) }
+    }
+}
+
+app.run()

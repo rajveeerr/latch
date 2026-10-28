@@ -284,6 +284,19 @@ try {
   await settings2.click('#mascotPicker .pick[data-mascot="aegis"]');
   ok('lock-screen layout and mascot can be chosen (Kerby, Aegis or none), and the lock screen follows the choice');
 
+  // How it locks: the native helper is the default, and the choice is saved like any other setting.
+  await options.bringToFront(); await options.reload(); await options.waitForSelector('#content:not([hidden])');
+  const styleOf = () => options.evaluate(async () => (await chrome.runtime.sendMessage({ type: 'getSettings' })).settings.lockStyle);
+  await options.waitForSelector('#styleNative', { state: 'attached' });
+  assert.equal(await options.isChecked('#styleWindow'), true, 'the form shows the style this run pinned');
+  await options.click('label.choice:has(#styleNative)');
+  await until(async () => (await styleOf()) === 'native', 'the native helper style to be saved');
+  assert.equal(await options.isVisible('#helperCard'), true, 'the helper card shows when the native style is chosen');
+  await options.click('label.choice:has(#styleWindow)');
+  await until(async () => (await styleOf()) === 'window', 'the lock-window style to be saved');
+  assert.equal(await options.isVisible('#helperCard'), false);
+  ok('how it locks can be chosen (native helper, on the page, separate window), and the helper card shows only for the helper');
+
   console.log(`\nAll ${step} checks passed.`);
 } catch (err) {
   console.error('\nFAILED:', err);

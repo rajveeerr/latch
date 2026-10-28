@@ -24,7 +24,8 @@
     "idle",
     "alarms",
     "scripting",
-    "tabGroups"
+    "tabGroups",
+    "nativeMessaging"
   ],
   "content_scripts": [
     {

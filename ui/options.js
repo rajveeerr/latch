@@ -88,7 +88,7 @@ function readForm() {
   for (const k of NUMBERS) s[k] = Number($(k).value || 0);
   s.scope = document.querySelector('input[name="scope"]:checked')?.value || saved.scope;
   s.lockWindow = $('lockFullscreen').checked ? 'fullscreen' : 'fill';
-  s.lockStyle = $('lockOverlay').checked ? 'overlay' : 'window';
+  s.lockStyle = document.querySelector('input[name="lockStyle"]:checked')?.value || saved.lockStyle;
   s.hideMode = $('hideStrict').checked ? 'close' : 'minimize';
   return s;
 }
@@ -98,8 +98,12 @@ function writeForm(s) {
   for (const k of NUMBERS) $(k).value = s[k] || '';       // zero reads as an empty box, not a stray "0 min"
   $(s.scope === 'private' ? 'scopePrivate' : 'scopeProfile').checked = true;
   $('lockFullscreen').checked = s.lockWindow === 'fullscreen';
-  $('lockOverlay').checked = s.lockStyle !== 'window';
-  $('lockFullscreen').disabled = s.lockStyle !== 'window';          // a full-screen lock window only exists in the lock-window style
+  const mac = Boolean(status && status.mac);
+  $('styleNativeRow').hidden = !mac;                               // the helper is a Mac program
+  const style = s.lockStyle === 'native' && !mac ? 'overlay' : s.lockStyle;
+  $({ native: 'styleNative', overlay: 'styleOverlay', window: 'styleWindow' }[style]).checked = true;
+  $('lockFullscreen').disabled = style !== 'window';               // a full-screen lock window only exists in the lock-window style
+  $('helperCard').hidden = !(mac && style === 'native');
   $('hideStrict').checked = s.hideMode === 'close';
   $('hideStrictRow').hidden = !(status && status.mac);          // closing windows is only offered where it is safe: macOS
   syncChips();
@@ -214,7 +218,22 @@ for (const k of BOOLEANS) $(k).addEventListener('change', () => saveSettings());
 for (const radio of document.querySelectorAll('input[name="scope"]')) radio.addEventListener('change', () => saveSettings());
 // The two lock-window switches are alternatives: turning one on turns the other off.
 $('lockFullscreen').addEventListener('change', () => saveSettings());
-$('lockOverlay').addEventListener('change', () => { $('lockFullscreen').disabled = $('lockOverlay').checked; saveSettings(); });
+for (const radio of document.querySelectorAll('input[name="lockStyle"]')) radio.addEventListener('change', () => {
+  $('lockFullscreen').disabled = readForm().lockStyle !== 'window';
+  $('helperCard').hidden = readForm().lockStyle !== 'native';
+  if (readForm().lockStyle === 'native') checkHelper();
+  saveSettings();
+});
+$('checkHelper').addEventListener('click', () => checkHelper());
+// Is the Latch helper installed and answering? Says how to install it when it is not.
+async function checkHelper() {
+  $('helperTitle').textContent = 'Checking the helper…';
+  const { ok } = await send({ type: 'probeHelper' });
+  $('helperTitle').textContent = ok ? 'Helper found' : 'Helper not installed yet';
+  $('helperHelp').textContent = ok
+    ? 'Locking will use it. Windows are covered natively, and the passcode is typed into the helper.'
+    : 'Until then Latch locks on the page. To install it, open Terminal in the Latch folder and run  ./native/install.sh  then reload Latch in the browser and press Check.';
+}
 $('hideStrict').addEventListener('change', async () => {
   if (!$('hideStrict').checked) return saveSettings();
   await braveCheck;
