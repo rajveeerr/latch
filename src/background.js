@@ -100,8 +100,17 @@ async function lock(reason) {
 
 // Idempotent: the full pass runs on lock, and a fast pass runs whenever something could expose a window.
 let fastPending = false;
-function enforceSoon() {
+let broughtForward = null;                       // the window the last event put in front, if it was not the lock window
+let recentPasses = [];                           // start times of recent fast passes (circuit breaker below)
+function enforceSoon(windowId = null) {
+  if (windowId != null) broughtForward = windowId;
   if (fastPending) return;                      // a burst of events needs only one pass
+  // Our own minimizing moves focus, which raises more events. If passes keep coming back to back, something is feeding
+  // itself (a loop), so stop for a few seconds instead of spinning. The next real event after that is handled normally.
+  const now = Date.now();
+  recentPasses = recentPasses.filter((t) => now - t < 5000);
+  if (recentPasses.length >= 6) return;
+  recentPasses.push(now);
   fastPending = true;
   serial(async () => { fastPending = false; await enforceLocked({ fast: true }); });
 }
@@ -115,7 +124,7 @@ async function enforceLocked({ fast = false } = {}) {
       // Something came forward while locked (the Dock, Mission Control, Cmd+Tab). Do only the instant things, in this order:
       // the lock window first, then put the window away. The covers are already on every page, so no per-tab work here.
       if (settings.scope === 'profile') await ensureLockWindow(settings);
-      if (settings.minimizeWindows) await minimizeWindows(settings);
+      if (settings.minimizeWindows) await minimizeWindows(settings, { full: false });
     } else {
       // Order matters for speed and for leaks: the cover goes on every page first (instant), then the lock window rises
       // over the screen, and only then are windows taken out of the way (the slow, animated part).
@@ -135,7 +144,14 @@ async function enforceLocked({ fast = false } = {}) {
 
 // Hide this profile's windows. The extension API only ever returns windows of the profile it is installed in, so
 // other profiles' windows are never seen, let alone touched.
-async function minimizeWindows(settings) {
+// Windows we minimized in this lock, and when. The browser may report "normal" for a window that really is minimized
+// (Brave on macOS), so without this every pass would minimize every window again, and each minimize moves focus, which
+// starts the next pass: an endless loop. A window is minimized again only when it was just brought forward, and not
+// twice within 0.8 seconds.
+const minimizedAt = new Map();
+async function minimizeWindows(settings, { full = true } = {}) {
+  if (full) minimizedAt.clear();
+  const forward = broughtForward; broughtForward = null;
   const state = await getState();
   const windowStates = { ...state.windowStates };
   const windows = await chrome.windows.getAll({ windowTypes: ['normal', 'app'] });
@@ -145,6 +161,9 @@ async function minimizeWindows(settings) {
     // "normal" for a window that really is minimized), so every window we ask to minimize is always asked to come back.
     if (!(win.id in windowStates)) windowStates[win.id] = { state: win.state, left: win.left, top: win.top, width: win.width, height: win.height };
     if (win.state === 'minimized') continue;
+    const last = minimizedAt.get(win.id);
+    if (!full && last != null && !(win.id === forward && Date.now() - last > 800)) continue;   // already put away
+    minimizedAt.set(win.id, Date.now());
     try {
       // A full-screen window is its own macOS Space and cannot be minimized directly: step out of full screen first.
       // Showing its tabs and page while "locked" would be a leak, so security wins over avoiding the animation.
@@ -428,7 +447,7 @@ chrome.windows.onFocusChanged.addListener(async (windowId) => {
     return;
   }
   chrome.alarms.clear('blur');
-  if (state.locked && windowId !== state.lockWindowId) enforceSoon();           // something else came to the front
+  if (state.locked && windowId !== state.lockWindowId) enforceSoon(windowId);   // something else came to the front
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
