@@ -138,7 +138,7 @@ npm run zip                  # dist/latch-<version>.zip
 node scripts/make-icons-sprite.mjs   # icons from Lucide
 ```
 
-The safety test fails the build if any code closes, reloads, discards or navigates a tab, closes a window other than its own lock window, asks for more permissions or touches the network. Window behaviour is covered by `npm run test:windows` (16 cases across normal, maximized, half-screen, full screen, minimized, several windows, tabs and windows opened or closed while locked), `npm run test:profiles` (Latch never touches another profile) and `npm run test:autolock`. Aegis, the painted scene, the engraved poster and the combination lock are drawn in code (`ui/aegis.js`, `ui/scene.js`, `ui/poster.js`, `ui/lockdial.js`).
+The safety test fails the build if any code closes, reloads, discards or navigates a tab, closes a window other than its own lock window, asks for more permissions or touches the network. Window behaviour is covered by `npm run test:windows` (18 cases across normal, maximized, half-screen, full screen, minimized, several windows, tabs and windows opened or closed while locked), `npm run test:profiles` (Latch never touches another profile) and `npm run test:autolock`. Aegis, the painted scene, the engraved poster and the combination lock are drawn in code (`ui/aegis.js`, `ui/scene.js`, `ui/poster.js`, `ui/lockdial.js`).
 
 </details>
 

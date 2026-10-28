@@ -98,19 +98,33 @@ async function lock(reason) {
   });
 }
 
-// Idempotent: runs on lock and again whenever something happens that could expose a window.
-async function enforceLocked() {
+// Idempotent: the full pass runs on lock, and a fast pass runs whenever something could expose a window.
+let fastPending = false;
+function enforceSoon() {
+  if (fastPending) return;                      // a burst of events needs only one pass
+  fastPending = true;
+  serial(async () => { fastPending = false; await enforceLocked({ fast: true }); });
+}
+
+async function enforceLocked({ fast = false } = {}) {
   const state = await getState();
   if (!state.locked) return;
   const settings = await getSettings();
   try {
-    // Order matters for speed and for leaks: the cover goes on every page first (instant), then the lock window rises over
-    // the screen, and only then are windows taken out of the way (the slow, animated part).
-    await ensureCovers(settings);
-    if (settings.scope === 'profile') await ensureLockWindow(settings);
-    if (settings.hideMode === 'close' && (await isMac())) await strictHide(settings);
-    if (settings.minimizeWindows) await minimizeWindows(settings);
-    if (settings.muteTabs) await muteAudibleTabs(settings);
+    if (fast) {
+      // Something came forward while locked (the Dock, Mission Control, Cmd+Tab). Do only the instant things, in this order:
+      // the lock window first, then put the window away. The covers are already on every page, so no per-tab work here.
+      if (settings.scope === 'profile') await ensureLockWindow(settings);
+      if (settings.minimizeWindows) await minimizeWindows(settings);
+    } else {
+      // Order matters for speed and for leaks: the cover goes on every page first (instant), then the lock window rises
+      // over the screen, and only then are windows taken out of the way (the slow, animated part).
+      await ensureCovers(settings);
+      if (settings.scope === 'profile') await ensureLockWindow(settings);
+      if (settings.hideMode === 'close' && (await isMac())) await strictHide(settings);
+      if (settings.minimizeWindows) await minimizeWindows(settings);
+      if (settings.muteTabs) await muteAudibleTabs(settings);
+    }
     if (state.failures) await patchState({ failures: 0 });
   } catch (err) {
     const failures = state.failures + 1;
@@ -382,7 +396,7 @@ chrome.windows.onFocusChanged.addListener(async (windowId) => {
     return;
   }
   chrome.alarms.clear('blur');
-  if (state.locked && windowId !== state.lockWindowId) serial(enforceLocked);   // something else came to the front
+  if (state.locked && windowId !== state.lockWindowId) enforceSoon();           // something else came to the front
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
@@ -391,7 +405,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 // Windows opened while locked (new window shortcut, session restore) are hidden at once.
 chrome.windows.onCreated.addListener(async (win) => {
-  if (win.type !== 'popup' && (await getState()).locked) serial(enforceLocked);
+  if (win.type !== 'popup' && (await getState()).locked) enforceSoon();
 });
 
 chrome.windows.onRemoved.addListener(async (windowId) => {
@@ -399,14 +413,14 @@ chrome.windows.onRemoved.addListener(async (windowId) => {
   if (windowId !== state.lockWindowId) return;
   await patchState({ lockWindowId: null });
   // "Everything" mode: closing the lock window brings it straight back. Private-only mode just stays covered.
-  if (state.locked && (await getSettings()).scope === 'profile') setTimeout(() => serial(enforceLocked), 250);
+  if (state.locked && (await getSettings()).scope === 'profile') setTimeout(() => enforceSoon(), 250);
 });
 
 chrome.tabs.onUpdated.addListener(async (tabId, change) => {
   if (change.status === 'complete' && (await getState()).locked) {
     chrome.scripting.executeScript({ target: { tabId, allFrames: true }, files: ['src/cover.js'] }).catch(() => {});   // a tab that finished loading while locked
   }
-  if (change.audible && (await getState()).locked && (await getSettings()).muteTabs) serial(enforceLocked);
+  if (change.audible && (await getState()).locked && (await getSettings()).muteTabs) serial(() => enforceLocked());
 });
 
 chrome.commands.onCommand.addListener((command) => {

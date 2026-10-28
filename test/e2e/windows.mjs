@@ -258,14 +258,42 @@ try {
     await until(() => pageFor('restore-a') && pageFor('restore-b'), 'pages'); await sleep(500);
     await lock();
     const lockId = await W(async () => (await chrome.windows.getAll({ windowTypes: ['popup'] }))[0].id);
+    const times = [];
     for (const target of [a, b, a]) {
+      const t0 = Date.now();
       await W((i) => chrome.windows.update(i, { state: 'normal', focused: true }), target);        // what clicking it in the Dock or Mission Control does
       await until(async () => (await focused()) === lockId, 'the lock window to take focus back', 6000);
+      times.push(Date.now() - t0);
       assert.ok(await coverUp(pageFor(target === a ? 'restore-a' : 'restore-b')), 'and the page of that window is covered');
     }
+    console.log(`      (lock window back in front after ${times.join(' ms, ')} ms)`);
+    assert.ok(Math.max(...times) < 1200, `the lock window must take focus back quickly, took ${times.join(', ')} ms`);
     assert.ok(await lockedFlag(), 'still locked');
     await unlock();
     await closeWin(a); await closeWin(b);
+  });
+
+  await scenario('even with 30 tabs open, a locked window brought forward is pushed back within a second', async () => {
+    const many = await create({ url: Array.from({ length: 30 }, (_, i) => site(`many-${i}`)), state: 'normal', left: 100, top: 100, width: 800, height: 600 });
+    await until(() => pageFor('many-29'), 'the last page', 20000); await sleep(1500);
+    const other = await create({ url: site('many-other'), state: 'normal', left: 160, top: 160, width: 800, height: 600 });
+    await until(() => pageFor('many-other'), 'page'); await sleep(500);
+    await lock();
+    await sleep(2500);
+    const lockId = await W(async () => (await chrome.windows.getAll({ windowTypes: ['popup'] }))[0].id);
+    const times = [];
+    for (const target of [many, other, many]) {
+      const t0 = Date.now();
+      await W((i) => chrome.windows.update(i, { state: 'normal', focused: true }), target);
+      await until(async () => (await focused()) === lockId, 'the lock window to take focus back', 8000);
+      times.push(Date.now() - t0);
+      await sleep(300);
+    }
+    console.log(`      (30 tabs: lock window back in front after ${times.join(' ms, ')} ms)`);
+    assert.ok(Math.max(...times) < 1000, `too slow with many tabs: ${times.join(', ')} ms`);
+    for (let i = 0; i < 30; i += 7) assert.ok(await coverUp(pageFor(`many-${i}`)), `many-${i} covered`);
+    await unlock();
+    await closeWin(many); await closeWin(other);
   });
 
   await scenario('closing the lock window does not unlock, and it returns', async () => {
