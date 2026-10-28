@@ -8,11 +8,13 @@ let ready = false;          // the helper said hello
 let biometric = false;      // and said whether this Mac has Touch ID to use
 let announced = false;      // the helper has been told to lock (a freshly started helper has not)
 let waiting = null;
+let problem = '';           // why the last connection failed: 'missing' (not installed), 'forbidden' (installed for another folder) or 'other'
 let failedAt = 0;           // when a connection last failed, so a missing helper is not retried on every event
 let on = { message: () => {}, gone: () => {} };
 
 export const helperUp = () => Boolean(port && ready);
 export const helperAnnounced = () => announced;
+export const helperProblem = () => problem;
 export const helperBiometric = () => helperUp() && biometric;
 
 export function sendHelper(message) {
@@ -38,11 +40,12 @@ export function connectHelper(handlers, { force = false } = {}) {
     };
     const timer = setTimeout(() => finish(false), 2500);
     mine.onMessage.addListener((message) => {
-      if (message?.event === 'ready') { ready = true; biometric = message.biometric === true; failedAt = 0; finish(true); return; }
+      if (message?.event === 'ready') { ready = true; biometric = message.biometric === true; failedAt = 0; problem = ''; finish(true); return; }
       on.message(message);
     });
     mine.onDisconnect.addListener(() => {
-      void chrome.runtime.lastError;                       // read it so the browser does not log it
+      const reason = chrome.runtime.lastError?.message || '';   // read it so the browser does not log it
+      if (!ready) problem = /forbidden/i.test(reason) ? 'forbidden' : /not found/i.test(reason) ? 'missing' : 'other';
       const wasUp = port === mine && ready;
       if (port === mine) { port = null; ready = false; announced = false; }
       if (waiting) finish(false);

@@ -11,6 +11,7 @@ const NUMBERS = ['autoLockMinutes', 'blurLockMinutes'];
 
 let saved = null;            // settings exactly as the background has them
 let status = null;
+let helperChecked = false;
 let aegis = null;            // the overview mascot
 let obAegis = null;          // the onboarding mascot
 let obActive = false;        // first run: the stepped flow is showing
@@ -104,6 +105,7 @@ function writeForm(s) {
   $({ native: 'styleNative', overlay: 'styleOverlay', window: 'styleWindow' }[style]).checked = true;
   $('lockFullscreen').disabled = style !== 'window';               // a full-screen lock window only exists in the lock-window style
   $('helperCard').hidden = !(mac && style === 'native');
+  if (!$('helperCard').hidden && !helperChecked) { helperChecked = true; checkHelper(); }       // say right away whether it is installed
   $('hideStrict').checked = s.hideMode === 'close';
   $('hideStrictRow').hidden = !(status && status.mac);          // closing windows is only offered where it is safe: macOS
   syncChips();
@@ -226,17 +228,32 @@ for (const radio of document.querySelectorAll('input[name="lockStyle"]')) radio.
 });
 $('checkHelper').addEventListener('click', () => checkHelper());
 // Is the Latch helper installed and answering? Says how to install it when it is not.
-async function checkHelper() {
-  $('helperTitle').textContent = 'Checking the helper…';
-  const { ok, biometric } = await send({ type: 'probeHelper' });
-  $('helperTitle').textContent = ok ? 'Helper found' : 'Helper not installed yet';
+async function checkHelper(quiet = false) {
+  if (!quiet) $('helperTitle').textContent = 'Checking the helper…';
+  const { ok, biometric, problem } = await send({ type: 'probeHelper' });
+  $('helperTitle').textContent = ok ? 'Helper found' : problem === 'forbidden' ? 'Helper installed for another folder' : 'Helper not installed yet';
   $('helperTouchId').disabled = !(ok && biometric);                 // needs the helper, and a Mac with Touch ID set up
   $('touchHelp').textContent = ok && !biometric
     ? 'This Mac reports no Touch ID (no sensor, or no finger enrolled), so only the passcode works.'
     : 'Adds a fingerprint button to the helper\'s lock screen, and Return on an empty field uses it. Your passcode always works too.';
   $('helperHelp').textContent = ok
     ? 'Locking will use it. Windows are covered natively, and the passcode is typed into the helper.'
-    : 'Until then Latch locks on the page. To install it, open Terminal in the Latch folder and run  ./native/install.sh  then reload Latch in the browser and press Check.';
+    : problem === 'forbidden'
+      ? 'It was installed for a different copy of Latch, which happens after the Latch folder is moved. Double-click "Install Latch Helper" in the Latch folder again. This page notices by itself.'
+      : problem === 'other'
+        ? 'The helper is installed but would not start. Double-click "Install Latch Helper" in the Latch folder again to refresh it.'
+        : 'Until then Latch locks on the page. It is a one-time step: double-click "Install Latch Helper" in the Latch folder. This page notices by itself, and there is nothing to reload.';
+  helperFound = ok;
+  if (!ok) pollHelper();
+}
+// While the card shows "not installed", look again every few seconds, so installing needs no extra click.
+let helperFound = false, helperTimer = null;
+function pollHelper() {
+  clearTimeout(helperTimer);
+  helperTimer = setTimeout(() => {
+    if (helperFound || $('helperCard').hidden || document.hidden) return pollHelper();
+    checkHelper(true);          // quietly, so the card does not flicker
+  }, 3000);
 }
 $('hideStrict').addEventListener('change', async () => {
   if (!$('hideStrict').checked) return saveSettings();

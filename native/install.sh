@@ -12,11 +12,12 @@ if [ -z "$ID" ]; then
   ID=$(printf %s "$ROOT" | shasum -a 256 | cut -c1-32 | tr '0-9a-f' 'a-p')
 fi
 
-sh "$HERE/build.sh"
+# The helper ships prebuilt (Apple Silicon and Intel). Only if it is missing is it built here, which needs the Xcode command line tools.
+[ -x "$HERE/bin/latch-helper" ] || sh "$HERE/build.sh"
 
 DEST="$HOME/Library/Application Support/Latch"
 mkdir -p "$DEST"
-cp "$HERE/build/latch-helper" "$DEST/latch-helper"
+cp "$HERE/bin/latch-helper" "$DEST/latch-helper"
 chmod 755 "$DEST/latch-helper"
 "$DEST/latch-helper" </dev/null >/dev/null 2>&1 || true   # start it once: macOS checks a new program on its first launch, so the first lock is not slow
 
@@ -44,4 +45,4 @@ else
   done
   [ "$FOUND" = 1 ] || echo "  no supported browser found in $SUPPORT"
 fi
-echo "Done. In the browser, reload Latch (brave://extensions), then pick \"Native Mac helper\" in Latch's settings."
+echo "Done. Latch's settings will notice the helper by themselves; there is nothing to reload."

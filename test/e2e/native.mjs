@@ -3,7 +3,7 @@
 //   node test/e2e/native.mjs        (Chromium; set CHROMIUM_PATH if needed)
 import { chromium } from 'playwright';
 import http from 'node:http';
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { tmpdir } from 'node:os';
@@ -16,11 +16,12 @@ if (process.platform !== 'darwin') { console.log('native helper test: macOS only
 const root = path.resolve(import.meta.dirname, '../..');
 const PASS = 'native pass 42';
 const built = path.join(root, 'native/build/latch-helper');
-execFileSync('sh', [path.join(root, 'native/build.sh')], { stdio: 'ignore' });
+execFileSync('sh', [path.join(root, 'native/build.sh'), '--fast'], { stdio: 'ignore' });
 // Run a copy from a plain folder, like install.sh does: a browser may not be allowed to start programs inside Desktop or Documents.
 const copyDir = mkdtempSync(path.join(tmpdir(), 'latch-helper-'));
 const helper = path.join(copyDir, 'latch-helper');
 execFileSync('cp', [built, helper]);
+spawnSync(helper, [], { input: '', timeout: 30000 });        // start it once, as install.sh does: macOS checks a new program on its first launch
 
 // The id an unpacked extension gets: SHA-256 of its folder path, written with the letters a-p.
 const extId = createHash('sha256').update(root).digest('hex').slice(0, 32).replace(/./g, (c) => String.fromCharCode(97 + parseInt(c, 16)));
@@ -78,6 +79,8 @@ try {
     await until(async () => page.evaluate(() => Boolean(document.querySelector('[data-latch-cover]'))), 'the page to be covered');
     await until(() => page.frames().find((f) => f.url().includes('ui/lock.html')), 'the in-page unlock screen');
     assert.ok((await events()).some((e) => e.includes('helper is not running')), 'Activity says the helper was not used');
+    const probe = await send({ type: 'probeHelper' });
+    assert.deepEqual([probe.ok, probe.problem], [false, 'missing'], 'settings can tell it is not installed');
     assert.equal((await send({ type: 'unlock', passcode: PASS })).ok, true);
     await until(async () => !(await flag()), 'unlocked');
     await W((i) => chrome.windows.remove(i), w);
@@ -90,7 +93,21 @@ try {
   const hosts = brave ? path.join(homedir(), 'Library/Application Support/Google/Chrome/NativeMessagingHosts') : path.join(profile, 'NativeMessagingHosts');   // a throwaway-profile Brave reads Chrome's folder
   mkdirSync(hosts, { recursive: true });
   const hostFile = path.join(hosts, 'com.latch.helper.json');
-  if (!existsSync(hostFile)) { writeFileSync(hostFile, manifest); wroteHostFile = hostFile; }
+  const wrong = JSON.stringify({ name: 'com.latch.helper', description: 'test', path: helper, type: 'stdio', allowed_origins: ['chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/'] });
+  const realFile = existsSync(hostFile);
+  if (!realFile) { writeFileSync(hostFile, wrong); wroteHostFile = hostFile; }
+  if (!realFile) await check('a helper installed for a different Latch folder is recognised as that, not as missing', async () => {
+    const probe = await send({ type: 'probeHelper' });
+    assert.deepEqual([probe.ok, probe.problem], [false, 'forbidden']);
+  });
+  if (!realFile) await check('settings notice the install by themselves: the card flips to "Helper found" with no click and no reload', async () => {
+    await admin.reload(); await admin.waitForSelector('#content:not([hidden])');
+    await until(async () => (await admin.textContent('#helperTitle')).includes('another folder'), 'the card to say it is installed for another folder', 8000);
+    writeFileSync(hostFile, manifest);                      // the install happens
+    await until(async () => (await admin.textContent('#helperTitle')).includes('Helper found'), 'the card to notice', 12000);
+    await until(() => helperPids().length === 0, 'the check helper to quit again', 6000);
+  });
+  if (!realFile) writeFileSync(hostFile, manifest);
   await check('the helper starts, says hello, and settings can see it', async () => {
     assert.equal((await send({ type: 'probeHelper' })).ok, true);
     await until(() => helperPids().length === 0, 'the probe helper to quit again', 6000);

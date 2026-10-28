@@ -74,11 +74,7 @@ Latch locks the profile it is installed in. Install it in each profile you want 
 
 A page cannot draw over a browser's tab strip and address bar, and a browser extension cannot minimize or move windows without jumping them around. The helper is a tiny Mac app (about 120 KB, built from `native/helper/main.swift`) that the browser starts only while Latch is locked. It draws an opaque lock exactly over each window of that profile, tab strip and address bar included, over full-screen windows too, with no new browser window and nothing minimized or moved. You type the passcode into the helper, never into a web page; the extension still checks it.
 
-```sh
-./native/install.sh      # builds the helper (needs the Xcode command line tools) and tells your browsers it may start
-```
-
-Then reload Latch at `brave://extensions`, open Latch's settings and choose **Native Mac helper**; the **Check** button tells you whether it was found. Switch on **Unlock with Touch ID on the lock screen** there to get a fingerprint button on the helper's lock (Return on an empty field uses it too); macOS shows its own Touch ID sheet, and the passcode always works as well. `./native/uninstall.sh` removes it. Without the helper Latch locks on the page instead, and says so in Activity.
+**Install: double-click `Install Latch Helper.command` in the Latch folder.** That is the whole job. It is a one-time step that takes a second and needs no developer tools (the helper is prebuilt for Apple Silicon and Intel). It survives browser updates and reloading Latch; only moving the Latch folder needs it again, and Latch's settings say so. Latch's settings notice the install by themselves: open them, pick **Native Mac helper**, and the card changes to *Helper found* with nothing to click or reload. If macOS says it cannot verify the file (it can when the folder came from a download), right-click it and choose **Open** once. Switch on **Unlock with Touch ID on the lock screen** there to get a fingerprint button on the helper's lock (Return on an empty field uses it too); macOS shows its own Touch ID sheet, and the passcode always works as well. `Uninstall Latch Helper.command` removes it (so does `./native/uninstall.sh`).
 
 ## Pair it with your Mac's lock
 

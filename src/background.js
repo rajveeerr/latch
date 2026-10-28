@@ -8,7 +8,7 @@
 //   * if enforcing the lock fails repeatedly, unlock rather than leave the browser stuck
 
 import { DEFAULTS, normalizeSettings, isWeakening, covers, overlayStyle } from './lib/settings.js';
-import { connectHelper, closeHelper, helperUp, helperAnnounced, helperBiometric, sendHelper } from './native.js';
+import { connectHelper, closeHelper, helperUp, helperAnnounced, helperBiometric, helperProblem, sendHelper } from './native.js';
 import {
   hasPasscode, setPasscode, verifyPasscode, resetWithRecovery, regenerateRecovery,
 } from './lib/auth.js';
@@ -702,7 +702,7 @@ const handlers = {
     const ok = await connectHelper({ message: onHelperMessage, gone: onHelperGone }, { force: true });
     const biometric = ok && helperBiometric();
     if (ok && !(await getState()).locked) closeHelper();          // only a check: let it quit again
-    return { ok, biometric };
+    return { ok, biometric, problem: ok ? '' : helperProblem() };
   },
   // A page cover reports that the unlock screen did not load in its page (a fixed sentence, nothing from the page).
   async coverNote() { await logEvent(store, 'setting', 'the unlock screen did not load inside a page, so the plain Unlock button was shown'); return { ok: true }; },
