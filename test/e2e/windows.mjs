@@ -252,6 +252,22 @@ try {
     await closeWin(a);
   });
 
+  await scenario('bringing a locked window forward (Dock, Mission Control, Cmd+Tab) puts the lock window straight back in front', async () => {
+    const a = await create({ url: site('restore-a'), state: 'normal', left: 100, top: 100, width: 800, height: 600 });
+    const b = await create({ url: site('restore-b'), state: 'normal', left: 160, top: 160, width: 800, height: 600 });
+    await until(() => pageFor('restore-a') && pageFor('restore-b'), 'pages'); await sleep(500);
+    await lock();
+    const lockId = await W(async () => (await chrome.windows.getAll({ windowTypes: ['popup'] }))[0].id);
+    for (const target of [a, b, a]) {
+      await W((i) => chrome.windows.update(i, { state: 'normal', focused: true }), target);        // what clicking it in the Dock or Mission Control does
+      await until(async () => (await focused()) === lockId, 'the lock window to take focus back', 6000);
+      assert.ok(await coverUp(pageFor(target === a ? 'restore-a' : 'restore-b')), 'and the page of that window is covered');
+    }
+    assert.ok(await lockedFlag(), 'still locked');
+    await unlock();
+    await closeWin(a); await closeWin(b);
+  });
+
   await scenario('closing the lock window does not unlock, and it returns', async () => {
     const a = await create({ url: site('closelock'), state: 'normal', left: 100, top: 100, width: 800, height: 600 });
     await until(() => pageFor('closelock'), 'page'); await sleep(400);
