@@ -140,7 +140,10 @@ async function enforceLocked({ fast = false } = {}) {
     const style = await activeStyle(settings);
     const nativeNow = style === 'native' && !helperBlind;
     if (state.nativeUp !== nativeNow) await patchState({ nativeUp: nativeNow });
-    if (!fast && settings.lockStyle === 'native' && style !== 'native') await logEvent(store, 'setting', 'the Latch helper is not running, so the lock was drawn in the pages instead');
+    if (!fast && settings.lockStyle === 'native' && style !== 'native') {
+      await logEvent(store, 'setting', 'the Latch helper is not running, so the lock was drawn in the pages instead');
+      await store.set('helperNudge', true);                           // the toolbar popup offers the Mac helper until it is installed
+    } else if (style === 'native' && (await store.get('helperNudge'))) await chrome.storage.local.remove('helperNudge');
     if (style === 'native') {
       // The helper covers every window of this profile, tab strip included, so nothing is minimized and no window opens.
       // The page covers still go on the visible tabs as a second layer in case the helper stops.
@@ -718,6 +721,7 @@ async function status() {
     incognitoAllowed,
     extensionId: chrome.runtime.id,
     mac: await isMac(),
+    helperNudge: settings.lockStyle === 'native' && (await isMac()) && Boolean(await store.get('helperNudge')),
     strictPending: ((await store.get('strictRestore')) || []).length,
     failedSinceUnlock: failuresSinceUnlock(events),
     retryAfterMs: Math.max(0, (authRecord?.lockoutUntil || 0) - Date.now()),
@@ -744,6 +748,7 @@ const handlers = {
   async probeHelper() {
     const ok = await connectHelper({ message: onHelperMessage, gone: onHelperGone }, { force: true });
     const biometric = ok && helperBiometric();
+    if (ok) await chrome.storage.local.remove('helperNudge');
     if (ok && !(await getState()).locked) {
       closeHelper();                                                // only a check: let it quit again
       if ((await getState()).locked) enforceSoon();                 // a lock landed in that instant: bring the helper back

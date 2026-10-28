@@ -638,24 +638,28 @@ const observer = new IntersectionObserver((entries) => {
 for (const a of links) { const section = document.getElementById(a.dataset.nav); if (section) observer.observe(section); }
 
 // ---------- first-run onboarding ----------
-const OB_PANES = ['welcome', 'passcode', 'recovery', 'private', 'touch', 'mac'];
-const OB_IDS = { welcome: 'obWelcome', passcode: 'obPasscode', recovery: 'obRecovery', private: 'obPrivate', touch: 'obTouch', mac: 'obMac' };
-const OB_MASCOT = { welcome: 'guard', passcode: 'guard', recovery: 'happy', private: 'guard', touch: 'guard', mac: 'happy' };
+const OB_PANES = ['welcome', 'passcode', 'recovery', 'private', 'helper', 'touch', 'mac'];
+const OB_IDS = { welcome: 'obWelcome', passcode: 'obPasscode', recovery: 'obRecovery', private: 'obPrivate', helper: 'obHelper', touch: 'obTouch', mac: 'obMac' };
+const OB_MASCOT = { welcome: 'guard', passcode: 'guard', recovery: 'happy', private: 'guard', helper: 'guard', touch: 'guard', mac: 'happy' };
+// A step is skipped where it does not apply: Touch ID without a platform authenticator, the Mac helper off a Mac.
+const obApplies = (key) => (key !== 'touch' || touchAvailable) && (key !== 'helper' || Boolean(status && status.mac));
 let obCurrent = 'welcome';
 
 function obGo(name) {
-  if (name === 'touch' && !touchAvailable) name = 'mac';
+  if (name === 'helper' && !obApplies('helper')) name = 'touch';
+  if (name === 'touch' && !obApplies('touch')) name = 'mac';
   obCurrent = name;
   for (const key of OB_PANES) $(OB_IDS[key]).hidden = key !== name;
   const index = OB_PANES.indexOf(name);
-  $('obDots').innerHTML = OB_PANES.filter((key) => key !== 'touch' || touchAvailable).map((key) => `<li class="${key === name ? 'on' : OB_PANES.indexOf(key) < index ? 'done' : ''}"></li>`).join('');
+  $('obDots').innerHTML = OB_PANES.filter(obApplies).map((key) => `<li class="${key === name ? 'on' : OB_PANES.indexOf(key) < index ? 'done' : ''}"></li>`).join('');
   obAegis.set(OB_MASCOT[name]);
-  const total = OB_PANES.filter((key) => key !== 'touch' || touchAvailable).length;
+  const total = OB_PANES.filter(obApplies).length;
   $('obStepText').textContent = `Step ${Math.min(index + 1, total)} of ${total}`;
   $('obSkip').hidden = !status.hasPasscode || name === 'welcome' || name === 'passcode' || name === 'recovery';
   if (name === 'passcode') { placePasscodeForm(); $('newPasscode').focus(); }
   else { const heading = $(OB_IDS[name]).querySelector('h1, h2'); if (heading) { heading.tabIndex = -1; heading.focus({ preventScroll: true }); } }   // keep keyboard focus on the new step
   if (name === 'private') renderObPrivate();
+  if (name === 'helper') checkObHelper();
   if (name === 'mac') {
     const mac = /Mac/.test(navigator.platform);
     $('obMacTitle').textContent = mac ? 'Lock your Mac too' : 'Lock your computer too';
@@ -663,6 +667,19 @@ function obGo(name) {
       ? 'Latch covers your browser; macOS covers everything else. Press Control + Command + Q to lock your Mac whenever you step away, and in System Settings turn on “Require password immediately” after sleep or screen saver.'
       : 'Latch covers your browser; your operating system covers everything else. Lock your computer when you step away (Windows key + L on Windows) and keep a sign-in password on it.';
   }
+}
+
+// The helper step: look for the helper every few seconds while this step is showing, so installing it needs no extra click.
+let obHelperTimer = null;
+async function checkObHelper() {
+  clearTimeout(obHelperTimer);
+  if (obCurrent !== 'helper') return;
+  const { ok } = await send({ type: 'probeHelper' });
+  $('obHelperStatus').textContent = ok ? 'Done. The helper is installed, so Latch will lock natively.' : 'Waiting for the helper. This page notices by itself, and there is nothing to reload.';
+  $('obNextHelper').textContent = ok ? 'Continue' : 'Skip for now';
+  $('obNextHelper').classList.toggle('primary', ok);
+  $('obOpenLatch').hidden = ok;
+  if (!ok) obHelperTimer = setTimeout(checkObHelper, 3000);
 }
 
 function renderObPrivate() {
@@ -695,7 +712,9 @@ async function finishOnboarding() {
 }
 
 $('obStart').addEventListener('click', () => obGo('passcode'));
-$('obNextPrivate').addEventListener('click', () => obGo('touch'));
+$('obNextPrivate').addEventListener('click', () => obGo('helper'));
+$('obNextHelper').addEventListener('click', () => { clearTimeout(obHelperTimer); obGo('touch'); });
+$('obOpenLatch').addEventListener('click', () => send({ type: 'openIncognitoSettings' }));
 $('obNextTouch').addEventListener('click', () => obGo('mac'));
 $('obAllow').addEventListener('click', () => send({ type: 'openIncognitoSettings' }));
 $('obTouchSetup').addEventListener('click', () => $('touchSetup').click());

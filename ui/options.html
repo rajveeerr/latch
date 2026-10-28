@@ -40,6 +40,17 @@
           <div class="obActions"><button class="btn primary" id="obAllow" type="button">Open extension settings</button><button class="btn" id="obNextPrivate" type="button">Skip for now</button></div>
         </div>
 
+        <div class="pane" id="obHelper" hidden>
+          <h2>Make it feel native</h2>
+          <p class="muted">Latch can lock the way Safari's private windows do: a small Mac app covers each window exactly, tab strip included, and nothing moves. It is a one-time step. Without it Latch still works, locking on the page.</p>
+          <ol class="obHelperSteps">
+            <li><b>Open Latch's folder.</b> The button opens Latch in your extensions; click the path next to <i>Source</i>.</li>
+            <li><b>Double-click “Install Latch Helper”</b> in that folder.</li>
+          </ol>
+          <p class="small obStatus" id="obHelperStatus" role="status"></p>
+          <div class="obActions"><button class="btn" id="obOpenLatch" type="button">Open Latch in extensions</button><button class="btn" id="obNextHelper" type="button">Skip for now</button></div>
+        </div>
+
         <div class="pane" id="obTouch" hidden>
           <h2>Unlock with Touch ID</h2>
           <p class="muted">Optional. Your passcode always works too.</p>
