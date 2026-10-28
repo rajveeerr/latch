@@ -18,6 +18,7 @@ const tone = (() => { const rate = 8000, n = rate, b = Buffer.alloc(44 + n * 2);
 const server = http.createServer((req, res) => {
   if (req.url.startsWith('/tone.wav')) { res.writeHead(200, { 'content-type': 'audio/wav' }); return res.end(tone); }
   res.writeHead(200, { 'content-type': 'text/html' });
+  if (req.url.startsWith('/busy.html')) return res.end(`<title>${req.url}</title><body>busy page<script>setInterval(() => { const t = Date.now(); while (Date.now() - t < 900); }, 20);</script>`);   // a page whose main thread is almost always blocked, like a heavy real site
   res.end(req.url.startsWith('/tall.html') ? `<title>${req.url}</title><div style="height:4000px">tall ${req.url}</div>` : req.url.startsWith('/tone.html') ? `<title>${req.url}</title><audio src="/tone.wav" autoplay loop></audio>` : `<title>${req.url}</title><textarea id="d"></textarea><p>${req.url}</p>`);
 });
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
@@ -474,6 +475,8 @@ try {
     const popupsBefore = await popups();
     await lockHere();
     await until(async () => weMinimized(w), 'the new-tab window to be put away');
+    const noted = await send({ type: 'getActivity' });
+    assert.ok(noted.events.some((e) => e.detail.includes('put a window away') && e.detail.includes('browser page')), 'Activity says why the window was put away');
     assert.equal(await popups(), popupsBefore, 'a window that can hold the cover is still there, so no unlock window is needed');
     const anchor = pageFor('anchor');
     assert.ok(await coverUp(anchor), 'the anchor window is covered in place');
@@ -496,6 +499,20 @@ try {
     await until(async () => (await popups()) === popupsBefore, 'the unlock window to close');
     const back = await W(async (wid) => { const t = (await chrome.tabs.query({ windowId: wid })).find((x) => (x.url || '').includes('t=anchor')); if (t) await chrome.tabs.update(t.id, { active: true }); return Boolean(t); }, anchorTab.windowId);
     assert.ok(back, 'the anchor page is back in front');
+  });
+
+  await scenario('overlay: a busy page (main thread blocked) is still covered in place, not put away', async () => {
+    await setStyle('overlay');
+    const popupsBefore = await popups();
+    const w = await create({ url: `${site('ov6').split('?')[0]}busy.html?t=ov6`, state: 'normal', left: 90, top: 90, width: 800, height: 560 });
+    await until(() => pageFor('ov6'), 'page'); await sleep(800);
+    await lockHere();
+    await sleep(6000);                                         // long enough for every retry to be used up
+    assert.equal(await weMinimized(w), false, 'a slow page is not treated as one that cannot be covered');
+    assert.equal(await popups(), popupsBefore, 'and no unlock window is opened');
+    assert.equal((await info(w)).state, 'normal');
+    await unlock();
+    await closeWin(w);
   });
 
   await scenario('overlay: opening a browser page in a locked window puts that window away at once', async () => {

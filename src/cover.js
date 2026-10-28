@@ -88,7 +88,7 @@
     root.append(frame);
     // If the screen does not report back (a page policy blocked the frame), take it away so the plain "Unlock" card shows.
     const mine = frame;
-    setTimeout(() => { if (frame === mine && !mine.dataset.ready) dropFrame(); }, 2500);
+    setTimeout(() => { if (frame === mine && !mine.dataset.ready) { dropFrame(); try { chrome.runtime.sendMessage({ type: 'coverNote' }); } catch { /* extension reloaded */ } } }, 2500);
   }
   function dropFrame() {
     if (frame) { frame.remove(); frame = null; }

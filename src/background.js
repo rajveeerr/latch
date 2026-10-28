@@ -331,26 +331,31 @@ async function pingCovered(tabId) {
   } catch { return false; }
 }
 
-// Does the tab you can see in this window carry the cover?
-async function windowShowsCover(win) {
+// Why the tab you can see in this window does not carry the cover, or '' when it does.
+async function whyExposed(win) {
   const [tab] = await chrome.tabs.query({ windowId: win.id, active: true });
-  if (!tab) return true;
-  if (BROWSER_PAGE.test(tab.url || tab.pendingUrl || '')) return false;
-  if (await pingCovered(tab.id)) return true;
+  if (!tab) return '';
+  if (BROWSER_PAGE.test(tab.url || tab.pendingUrl || '')) return 'it shows a browser page, which no extension can cover';
+  if (await pingCovered(tab.id)) return '';
   // Not there yet: the page may have been open before Latch loaded, or still be loading. Put the script in and look again.
-  try { await chrome.scripting.executeScript({ target: { tabId: tab.id, allFrames: true }, files: ['src/cover.js'] }); } catch { return false; }   // a page scripts cannot run in
-  for (let i = 0; i < 6; i++) { await sleep(150); if (await pingCovered(tab.id)) return true; }
-  return false;
+  try { await chrome.scripting.executeScript({ target: { tabId: tab.id, allFrames: true }, files: ['src/cover.js'] }); } catch { return 'the cover script could not be put into its page'; }   // a page scripts cannot run in
+  for (let i = 0; i < 6; i++) { await sleep(150); if (await pingCovered(tab.id)) return ''; }
+  return 'its page did not show the cover in time';
 }
 
+const notedExposed = new Set();
 async function secureExposed(settings, { fresh }) {
+  if (fresh) notedExposed.clear();
   const state = await getState();
   const forward = broughtForward;
   const wins = (await chrome.windows.getAll({ windowTypes: ['normal', 'app'] }))
     // A window we put away is skipped (the browser may still report it as "normal"), unless it was just brought forward again.
     .filter((win) => win.id !== state.lockWindowId && covers(settings, win) && win.state !== 'minimized' && (!minimizedAt.has(win.id) || win.id === forward));
-  const exposed = [], visible = [];
-  await Promise.all(wins.map(async (win) => ((await windowShowsCover(win)) ? visible : exposed).push(win.id)));
+  const exposed = [], visible = [], why = new Map();
+  await Promise.all(wins.map(async (win) => { const reason = await whyExposed(win); if (reason) { exposed.push(win.id); why.set(win.id, reason); } else visible.push(win.id); }));
+  for (const [id, reason] of why) {                                    // say so in Activity, once per window per lock
+    if (!notedExposed.has(id)) { notedExposed.add(id); await logEvent(store, 'setting', `put a window away instead of covering it: ${reason}`); }
+  }
   if (exposed.length) await minimizeWindows(settings, { full: fresh, only: exposed });
   broughtForward = null;
   // Nothing left to type the passcode into: open the small unlock window, so there is always a way back in.
@@ -438,9 +443,16 @@ function unlockNow({ error = '', method = 'passcode' } = {}) {
         if (saved.state === 'minimized') continue;                      // the user had it minimized: leave it that way
         if (saved.state === 'fullscreen') {
           await chrome.windows.update(id, { state: 'normal' });          // un-minimize
+          await sleep(250);                                              // let the un-minimize animation finish
           await chrome.windows.update(id, { focused: true });            // it must be the active window to enter full screen
           await chrome.windows.update(id, { state: 'fullscreen' });
           await settleFullscreen(id);                                    // let the full-screen animation finish before anything else takes focus
+          if ((await chrome.windows.get(id)).state !== 'fullscreen') {   // the browser did not take it (not the active window yet): once more
+            await chrome.windows.update(id, { focused: true }); await sleep(400);
+            await chrome.windows.update(id, { state: 'fullscreen' });
+            await settleFullscreen(id);
+            if ((await chrome.windows.get(id)).state !== 'fullscreen') await logEvent(store, 'setting', 'a window could not be returned to full screen');
+          }
         } else {
           await chrome.windows.update(id, { state: saved.state === 'maximized' ? 'maximized' : 'normal' });   // un-minimize, whatever was reported
           if (saved.state !== 'maximized' && Number.isFinite(saved.left)) {
@@ -627,6 +639,8 @@ const handlers = {
   getSettings: async () => ({ settings: await getSettings(), defaults: DEFAULTS }),
   lock: () => lock('Locked manually'),
   openUnlockWindow: () => openUnlockWindow(),
+  // A page cover reports that the unlock screen did not load in its page (a fixed sentence, nothing from the page).
+  async coverNote() { await logEvent(store, 'setting', 'the unlock screen did not load inside a page, so the plain Unlock button was shown'); return { ok: true }; },
 
   async unlock({ passcode }) {
     const check = await checkPasscode(passcode);
@@ -771,7 +785,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!handler || sender.id !== chrome.runtime.id) return false;
   const fromOurPage = typeof sender.url === 'string' && sender.url.startsWith(EXTENSION_ORIGIN);
   // A page cover may ask for the unlock window, and nothing else.
-  const fromCover = Boolean(sender.tab) && message.type === 'openUnlockWindow';
+  const fromCover = Boolean(sender.tab) && (message.type === 'openUnlockWindow' || message.type === 'coverNote');
   if (!fromOurPage && !fromCover) return false;
   handler(message, sender).then(sendResponse, (err) => sendResponse({ ok: false, error: String(err?.message || err) }));
   return true;
