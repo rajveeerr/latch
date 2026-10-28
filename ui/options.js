@@ -6,7 +6,7 @@ import { b64u } from '../src/lib/webauthn.js';
 
 const $ = (id) => document.getElementById(id);
 const send = (message) => chrome.runtime.sendMessage(message);
-const BOOLEANS = ['skipWhileAudio', 'lockOnStartup', 'lockOnSystemLock', 'minimizeWindows', 'coverPages', 'pauseMedia', 'muteTabs'];
+const BOOLEANS = ['helperTouchId', 'skipWhileAudio', 'lockOnStartup', 'lockOnSystemLock', 'minimizeWindows', 'coverPages', 'pauseMedia', 'muteTabs'];
 const NUMBERS = ['autoLockMinutes', 'blurLockMinutes'];
 
 let saved = null;            // settings exactly as the background has them
@@ -228,8 +228,12 @@ $('checkHelper').addEventListener('click', () => checkHelper());
 // Is the Latch helper installed and answering? Says how to install it when it is not.
 async function checkHelper() {
   $('helperTitle').textContent = 'Checking the helper…';
-  const { ok } = await send({ type: 'probeHelper' });
+  const { ok, biometric } = await send({ type: 'probeHelper' });
   $('helperTitle').textContent = ok ? 'Helper found' : 'Helper not installed yet';
+  $('helperTouchId').disabled = !(ok && biometric);                 // needs the helper, and a Mac with Touch ID set up
+  $('touchHelp').textContent = ok && !biometric
+    ? 'This Mac reports no Touch ID (no sensor, or no finger enrolled), so only the passcode works.'
+    : 'Adds a fingerprint button to the helper\'s lock screen, and Return on an empty field uses it. Your passcode always works too.';
   $('helperHelp').textContent = ok
     ? 'Locking will use it. Windows are covered natively, and the passcode is typed into the helper.'
     : 'Until then Latch locks on the page. To install it, open Terminal in the Latch folder and run  ./native/install.sh  then reload Latch in the browser and press Check.';

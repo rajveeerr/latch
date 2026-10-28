@@ -5,6 +5,7 @@ const HOST = 'com.latch.helper';
 
 let port = null;
 let ready = false;          // the helper said hello
+let biometric = false;      // and said whether this Mac has Touch ID to use
 let announced = false;      // the helper has been told to lock (a freshly started helper has not)
 let waiting = null;
 let failedAt = 0;           // when a connection last failed, so a missing helper is not retried on every event
@@ -12,6 +13,7 @@ let on = { message: () => {}, gone: () => {} };
 
 export const helperUp = () => Boolean(port && ready);
 export const helperAnnounced = () => announced;
+export const helperBiometric = () => helperUp() && biometric;
 
 export function sendHelper(message) {
   if (!helperUp()) return false;
@@ -36,7 +38,7 @@ export function connectHelper(handlers, { force = false } = {}) {
     };
     const timer = setTimeout(() => finish(false), 2500);
     mine.onMessage.addListener((message) => {
-      if (message?.event === 'ready') { ready = true; failedAt = 0; finish(true); return; }
+      if (message?.event === 'ready') { ready = true; biometric = message.biometric === true; failedAt = 0; finish(true); return; }
       on.message(message);
     });
     mine.onDisconnect.addListener(() => {

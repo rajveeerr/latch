@@ -8,7 +8,7 @@
 //   * if enforcing the lock fails repeatedly, unlock rather than leave the browser stuck
 
 import { DEFAULTS, normalizeSettings, isWeakening, covers, overlayStyle } from './lib/settings.js';
-import { connectHelper, closeHelper, helperUp, helperAnnounced, sendHelper } from './native.js';
+import { connectHelper, closeHelper, helperUp, helperAnnounced, helperBiometric, sendHelper } from './native.js';
 import {
   hasPasscode, setPasscode, verifyPasscode, resetWithRecovery, regenerateRecovery,
 } from './lib/auth.js';
@@ -174,7 +174,7 @@ async function syncHelper(settings) {
   const windows = (await chrome.windows.getAll())
     .filter((win) => win.id !== state.lockWindowId && covers(settings, win))
     .map((win) => ({ id: win.id, left: win.left, top: win.top, width: win.width, height: win.height, fullscreen: win.state === 'fullscreen' }));
-  sendHelper({ cmd: helperAnnounced() ? 'update' : 'lock', windows, reason: state.reason });
+  sendHelper({ cmd: helperAnnounced() ? 'update' : 'lock', windows, reason: state.reason, touchId: settings.helperTouchId && helperBiometric() });
 }
 
 // What the helper reports: a passcode typed into its lock screen, or a request for Touch ID (opens the small unlock window).
@@ -182,6 +182,9 @@ async function onHelperMessage(message) {
   if (message?.event === 'attempt') {
     const result = await handlers.unlock({ passcode: String(message.passcode ?? '') });
     if (!result.ok) sendHelper({ cmd: 'result', ok: false, error: result.error, retryAfterMs: result.retryAfterMs });
+  } else if (message?.event === 'biometric') {
+    // A finger was accepted by macOS itself. Only honoured when the person has switched this on, and only while locked.
+    if ((await getSettings()).helperTouchId && (await getState()).locked) await unlockNow({ method: 'touchid' });
   } else if (message?.event === 'touchid') {
     openUnlockWindow();
   }
@@ -693,12 +696,13 @@ const handlers = {
   openUnlockWindow: () => openUnlockWindow(),
   // For the helper test only: makes the helper act as if a passcode was typed into its lock screen. The helper ignores it
   // unless it was started with LATCH_HELPER_TEST=1, so it does nothing in normal use.
-  async helperSelfTest({ passcode, snapshot }) { return { ok: sendHelper(snapshot ? { cmd: 'test-snapshot', path: String(snapshot) } : { cmd: 'test-submit', passcode: String(passcode ?? '') }) }; },
+  async helperSelfTest({ passcode, snapshot, biometric }) { return { ok: sendHelper(biometric ? { cmd: 'test-biometric' } : snapshot ? { cmd: 'test-snapshot', path: String(snapshot) } : { cmd: 'test-submit', passcode: String(passcode ?? '') }) }; },
   // Settings asks whether the helper is installed and answering.
   async probeHelper() {
     const ok = await connectHelper({ message: onHelperMessage, gone: onHelperGone }, { force: true });
+    const biometric = ok && helperBiometric();
     if (ok && !(await getState()).locked) closeHelper();          // only a check: let it quit again
-    return { ok };
+    return { ok, biometric };
   },
   // A page cover reports that the unlock screen did not load in its page (a fixed sentence, nothing from the page).
   async coverNote() { await logEvent(store, 'setting', 'the unlock screen did not load inside a page, so the plain Unlock button was shown'); return { ok: true }; },

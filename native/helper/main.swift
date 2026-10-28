@@ -8,10 +8,29 @@
 //
 // It never touches the browser's windows, tabs or data: it only draws its own windows on top.
 import Cocoa
+import LocalAuthentication
 
 let protocolVersion = 1
 let browserPid = getppid()                       // the browser started us, so it is our parent
 let testMode = ProcessInfo.processInfo.environment["LATCH_HELPER_TEST"] == "1"
+
+// Is Touch ID there to use on this Mac (hardware present and a finger enrolled)?
+func biometricAvailable() -> Bool {
+    var error: NSError?
+    return LAContext().canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error)
+}
+
+// Shows the system Touch ID sheet. Only a successful scan is reported, and the extension decides what it is worth.
+var biometricBusy = false
+func askBiometric(done: @escaping (Bool) -> Void) {
+    guard !biometricBusy else { return }
+    biometricBusy = true
+    let context = LAContext()
+    context.localizedCancelTitle = "Use passcode"
+    context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: "unlock your browser") { ok, _ in
+        DispatchQueue.main.async { biometricBusy = false; done(ok) }
+    }
+}
 
 // MARK: - native messaging
 
@@ -73,6 +92,9 @@ final class LockPanel: NSView {
     var onSubmit: ((String) -> Void)?
     var onTouch: (() -> Void)?
     private var countdown: Timer?
+    private var touchOn = false
+    private let stack = NSStackView()
+    private let icon = NSImageView()
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -80,7 +102,6 @@ final class LockPanel: NSView {
         layer?.backgroundColor = NSColor.dynamic(light: NSColor(red: 0.965, green: 0.957, blue: 0.937, alpha: 1),
                                                  dark: NSColor(red: 0.043, green: 0.055, blue: 0.086, alpha: 1)).cgColor
 
-        let icon = NSImageView()
         if let image = NSImage(systemSymbolName: "lock.fill", accessibilityDescription: "Locked") {
             icon.image = image.withSymbolConfiguration(.init(pointSize: 34, weight: .regular))
         }
@@ -113,7 +134,13 @@ final class LockPanel: NSView {
         touch.bezelStyle = .inline
         touch.isBordered = false
         touch.contentTintColor = .secondaryLabelColor
-        touch.font = .systemFont(ofSize: 12)
+        touch.font = .systemFont(ofSize: 13)
+        touch.title = "  Unlock with Touch ID"
+        if let image = NSImage(systemSymbolName: "touchid", accessibilityDescription: "Touch ID") ?? NSImage(systemSymbolName: "lock.open", accessibilityDescription: nil) {
+            touch.image = image.withSymbolConfiguration(.init(pointSize: 18, weight: .regular))
+            touch.imagePosition = .imageLeft
+        }
+        touch.isHidden = true
         touch.target = self
         touch.action = #selector(useTouch)
 
@@ -122,7 +149,7 @@ final class LockPanel: NSView {
         message.alignment = .center
         message.maximumNumberOfLines = 2
 
-        let stack = NSStackView(views: [icon, title, sub, field, button, message, touch])
+        for view in [icon, title, sub, field, button, message, touch] { stack.addArrangedSubview(view) }
         stack.orientation = .vertical
         stack.alignment = .centerX
         stack.spacing = 12
@@ -138,7 +165,9 @@ final class LockPanel: NSView {
     required init?(coder: NSCoder) { fatalError("not used") }
 
     @objc func submit() {
-        guard field.isEnabled, !field.stringValue.isEmpty else { return }
+        // Return on an empty field asks for Touch ID, when it is on.
+        if field.stringValue.isEmpty { if touchOn && field.isEnabled { onTouch?() }; return }
+        guard field.isEnabled else { return }
         let typed = field.stringValue
         field.stringValue = ""
         message.stringValue = ""
@@ -146,6 +175,16 @@ final class LockPanel: NSView {
         onSubmit?(typed)
     }
     @objc func useTouch() { onTouch?() }
+
+    func setTouch(_ on: Bool) { touchOn = on; touch.isHidden = !on; if !on { touch.isHidden = true } }
+
+    // A small tile (a window shrunk into the Stage Manager strip) has room only for the lock.
+    override func layout() {
+        super.layout()
+        let compact = bounds.width < 420 || bounds.height < 300
+        for view in stack.arrangedSubviews where view !== icon { view.isHidden = compact || (view === touch && !touchOn) }
+        icon.symbolConfiguration = .init(pointSize: compact ? 26 : 34, weight: .regular)
+    }
 
     func setBusy(_ busy: Bool) { field.isEnabled = !busy; button.isEnabled = !busy }
 
@@ -174,6 +213,8 @@ final class LockPanel: NSView {
         field.layer?.add(shake, forKey: "shake")
     }
 
+    func note(_ text: String) { message.stringValue = text }
+
     func reset() { countdown?.invalidate(); field.stringValue = ""; message.stringValue = ""; setBusy(false) }
 }
 
@@ -190,6 +231,7 @@ final class Overlays {
     private(set) var locked = false
     private var timer: Timer?
     private var keyed = false
+    private var touchOn = false
 
     var primaryHeight: CGFloat { NSScreen.screens.first?.frame.height ?? 0 }
 
@@ -199,11 +241,16 @@ final class Overlays {
         keyed = false
         tick()
         timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { [weak self] _ in self?.tick() }
+        timer = Timer.scheduledTimer(withTimeInterval: 0.06, repeats: true) { [weak self] _ in self?.tick() }
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main) { [weak self] _ in self?.tick() }
     }
 
     func update(_ list: [ProfileWindow]) { profile = list; if locked { tick() } }
+
+    func setTouch(_ on: Bool) {
+        touchOn = on
+        for window in windows.values { (window.contentView as? LockPanel)?.setTouch(on) }
+    }
 
     func unlock() {
         locked = false
@@ -237,6 +284,18 @@ final class Overlays {
         return false
     }
 
+    // A window that Stage Manager has shrunk into its side strip is still the real window, so it gets a lock tile too. It is
+    // recognised by its shape: smaller than one of ours, with the same width-to-height ratio.
+    private func looksLikeStripThumbnail(_ bounds: CGRect) -> Bool {
+        guard bounds.width > 40, bounds.height > 30, bounds.width <= 420 else { return false }
+        let ratio = bounds.width / bounds.height
+        let screen = NSScreen.screens.first?.frame.size ?? .zero
+        return profile.contains { p in
+            let width = p.fullscreen ? Double(screen.width) : p.width, height = p.fullscreen ? Double(screen.height) : p.height
+            return height > 0 && bounds.width < width * 0.6 && abs(ratio - width / height) / (width / height) < 0.02
+        }
+    }
+
     private func cocoaRect(_ b: CGRect) -> NSRect { NSRect(x: b.minX, y: primaryHeight - b.maxY, width: b.width, height: b.height) }
 
     private func makeWindow(_ rect: NSRect) -> OverlayWindow {
@@ -249,7 +308,12 @@ final class Overlays {
         window.animationBehavior = .none
         let panel = LockPanel(frame: NSRect(origin: .zero, size: rect.size))
         panel.onSubmit = { passcode in send(["event": "attempt", "passcode": passcode]) }
-        panel.onTouch = { send(["event": "touchid"]) }
+        panel.setTouch(touchOn)
+        panel.onTouch = { [weak panel] in
+            askBiometric { ok in
+                if ok { send(["event": "biometric"]) } else { panel?.note("Touch ID did not match. Use your passcode.") }
+            }
+        }
         window.contentView = panel
         window.setFrame(rect, display: true)
         return window
@@ -266,7 +330,7 @@ final class Overlays {
                   let number = entry[kCGWindowNumber as String] as? Int,
                   let dictionary = entry[kCGWindowBounds as String] as? NSDictionary,
                   let bounds = CGRect(dictionaryRepresentation: dictionary) else { continue }
-            guard bounds.width > 120, bounds.height > 80, belongs(bounds) else { continue }
+            guard bounds.width > 40, bounds.height > 30, belongs(bounds) || looksLikeStripThumbnail(bounds) else { continue }
             seen.insert(number)
             let rect = cocoaRect(bounds)
             if let existing = windows[number] {
@@ -295,12 +359,13 @@ let overlays = Overlays()
 
 func handle(_ message: [String: Any]) {
     switch message["cmd"] as? String {
-    case "lock": overlays.lock(parseWindows(message["windows"]))
-    case "update": overlays.update(parseWindows(message["windows"]))
+    case "lock": overlays.setTouch((message["touchId"] as? Bool) ?? false); overlays.lock(parseWindows(message["windows"]))
+    case "update": overlays.setTouch((message["touchId"] as? Bool) ?? false); overlays.update(parseWindows(message["windows"]))
     case "result": overlays.showWrong(retryAfterMs: (message["retryAfterMs"] as? NSNumber)?.intValue)
     case "unlock": overlays.unlock()
-    case "ping": send(["event": "ready", "version": protocolVersion])
+    case "ping": send(["event": "ready", "version": protocolVersion, "biometric": biometricAvailable()])
     case "test-submit": if testMode, let passcode = message["passcode"] as? String { overlays.submitFromTest(passcode) }
+    case "test-biometric": if testMode { send(["event": "biometric"]) }
     case "test-snapshot": if testMode, let file = message["path"] as? String { overlays.snapshot(to: file) }
     case "quit": exit(0)
     default: break
@@ -310,7 +375,7 @@ func handle(_ message: [String: Any]) {
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)                 // no Dock icon, no menu bar
 
-DispatchQueue.main.async { send(["event": "ready", "version": protocolVersion]) }
+DispatchQueue.main.async { send(["event": "ready", "version": protocolVersion, "biometric": biometricAvailable()]) }
 
 Thread.detachNewThread {
     while let message = readMessage() { DispatchQueue.main.async { handle(message) } }

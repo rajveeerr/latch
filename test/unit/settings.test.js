@@ -65,6 +65,14 @@ test('lock style: the native helper by default, a bad value falls back, and movi
   assert.equal(isWeakening(DEFAULTS, { ...DEFAULTS, lockStyle: 'window' }), false);
 });
 
+test('helper Touch ID: off by default, a bad value is ignored, and switching it on counts as loosening', () => {
+  assert.equal(DEFAULTS.helperTouchId, false);
+  assert.equal(normalizeSettings({ helperTouchId: 'yes' }).helperTouchId, false);
+  assert.equal(normalizeSettings({ helperTouchId: true }).helperTouchId, true);
+  assert.equal(isWeakening(DEFAULTS, { ...DEFAULTS, helperTouchId: true }), true);
+  assert.equal(isWeakening({ ...DEFAULTS, helperTouchId: true }, DEFAULTS), false);
+});
+
 test('the overlay needs the page cover: without it the lock window is used', () => {
   assert.equal(overlayStyle(DEFAULTS), true);                                   // native falls back to the overlay
   assert.equal(overlayStyle({ ...DEFAULTS, coverPages: false }), false);

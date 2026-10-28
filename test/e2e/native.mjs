@@ -122,6 +122,21 @@ try {
     assert.ok(helperPids().length >= 1, 'the helper is still there');
   });
 
+  await check('a fingerprint reported by the helper does nothing unless Touch ID is switched on, and unlocks when it is', async () => {
+    assert.equal((await send({ type: 'helperSelfTest', biometric: true })).ok, true);
+    await sleep(1200);
+    assert.equal(await flag(), true, 'Touch ID is off, so a reported fingerprint is ignored');
+    assert.equal((await send({ type: 'saveSettings', settings: { ...(await send({ type: 'getSettings' })).settings, helperTouchId: true }, passcode: PASS })).ok, true);
+    assert.equal((await send({ type: 'helperSelfTest', biometric: true })).ok, true);
+    await until(async () => !(await flag()), 'unlocked by the fingerprint', 6000);
+    assert.ok((await send({ type: 'getActivity' })).events.some((e) => e.type === 'unlock' && e.detail === 'touchid'), 'Activity says it was Touch ID');
+    await until(() => helperPids().length === 0, 'the helper to quit', 8000);
+    // back to a locked state for the next checks
+    assert.equal((await send({ type: 'lock' })).ok, true);
+    await until(flag, 'locked again');
+    await until(() => helperPids().length >= 1, 'the helper again', 6000);
+  });
+
   await check('the right passcode unlocks, the lock goes away, and the helper quits', async () => {
     assert.equal((await send({ type: 'helperSelfTest', passcode: PASS })).ok, true);
     await until(async () => !(await flag()), 'unlocked', 6000);
@@ -129,6 +144,35 @@ try {
     await until(() => helperPids().length === 0, 'the helper to quit', 8000);
     assert.ok(pids.length >= 1);
     assert.deepEqual(await info(a), await info(a));
+  });
+
+  await check('a maximized window, and a window minimized then restored while locked: each is covered exactly, nothing is resized or moved', async () => {
+    const m = await create({ url: site('max'), left: 40, top: 40, width: 700, height: 500, state: 'normal' });
+    await W((i) => chrome.windows.update(i, { state: 'maximized' }), m);
+    await until(async () => (await info(m)).state === 'maximized', 'maximized', 10000); await sleep(1000);
+    const n = await create({ url: site('mini'), left: 200, top: 120, width: 640, height: 460, state: 'normal' });
+    await sleep(1000);
+    const beforeM = await info(m), beforeN = await info(n);
+    assert.equal((await send({ type: 'lock' })).ok, true);
+    await until(flag, 'locked');
+    const pid = await until(() => helperPids().at(-1), 'the helper', 6000);
+    const coversAll = () => { const o = windowsOf(pid); return windowsOf(browserPid).every((bw) => o.some((x) => Math.abs(x.x - bw.x) <= 3 && Math.abs(x.y - bw.y) <= 3 && Math.abs(x.w - bw.w) <= 3 && Math.abs(x.h - bw.h) <= 3)); };
+    await until(coversAll, 'every window, the maximized one included, to be covered exactly', 6000);
+    const maxSize = windowsOf(browserPid).sort((x, y) => y.w * y.h - x.w * x.h)[0];
+    assert.ok(maxSize.w >= 1000, 'the maximized window really is screen sized');
+    // minimize one while locked: it leaves the screen, and the lock leaves with it; restoring it brings the lock straight back
+    const countBefore = windowsOf(browserPid).length;
+    await W((i) => chrome.windows.update(i, { state: 'minimized' }), n);
+    await until(() => windowsOf(browserPid).length < countBefore, 'the window to leave the screen', 6000).catch(() => {});
+    await W((i) => chrome.windows.update(i, { state: 'normal' }), n);
+    await until(() => windowsOf(browserPid).length >= countBefore, 'the window to come back', 6000);
+    await until(coversAll, 'the restored window to be covered again', 4000);
+    assert.deepEqual(await info(m), beforeM, 'the maximized window was not resized or moved');
+    const afterN = await info(n);
+    assert.ok(['left', 'top', 'width', 'height'].every((k) => Math.abs(afterN[k] - beforeN[k]) <= 2), 'the restored window is where it was');
+    assert.equal((await send({ type: 'helperSelfTest', passcode: PASS })).ok, true);
+    await until(async () => !(await flag()), 'unlocked', 6000);
+    await W((i) => chrome.windows.remove(i), m); await W((i) => chrome.windows.remove(i), n);
   });
 
   await check('a window in full screen is covered where it is, with no window opened', async () => {

@@ -18,6 +18,7 @@ DEST="$HOME/Library/Application Support/Latch"
 mkdir -p "$DEST"
 cp "$HERE/build/latch-helper" "$DEST/latch-helper"
 chmod 755 "$DEST/latch-helper"
+"$DEST/latch-helper" </dev/null >/dev/null 2>&1 || true   # start it once: macOS checks a new program on its first launch, so the first lock is not slow
 
 write_manifest() {   # $1 = the browser's NativeMessagingHosts folder
   mkdir -p "$1"
