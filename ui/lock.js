@@ -9,6 +9,7 @@ const form = $('form'), input = $('passcode'), button = $('unlock');
 let countdown;
 let calmTimer;
 const preview = location.hash === '#preview';       // opened from Settings: nothing real happens here
+const embed = location.hash === '#embed';           // shown inside the cover on a locked page: no window of its own to fit or close
 
 // Two layouts share everything except the picture: a physical combination lock, or a trading card with the chosen
 // mascot on it. Either way "pet" is whatever reacts to what you do (typing, a wrong guess, a right one).
@@ -157,11 +158,12 @@ function done(method) {
   $('reason').textContent = 'Restoring your windows…';
   button.disabled = true;
   // If the window does not close by itself, never leave the person stuck here.
+  if (embed) return void ($('reason').textContent = 'Welcome back.');
   setTimeout(() => { $('reason').textContent = 'You can close this window.'; button.disabled = false; }, 3000);
 }
 
 async function init() {
-  if (!preview) send({ type: 'fitLockWindow', left: screen.availLeft ?? 0, top: screen.availTop ?? 0, width: screen.availWidth, height: screen.availHeight }).catch(() => {});
+  if (!preview && !embed && location.hash !== '#small') send({ type: 'fitLockWindow', left: screen.availLeft ?? 0, top: screen.availTop ?? 0, width: screen.availWidth, height: screen.availHeight }).catch(() => {});
   if (preview) {
     $('title').textContent = 'Lock screen preview';
     $('reason').textContent = 'Nothing is locked. Type anything and press Unlock, or type “wrong”.';
@@ -180,6 +182,7 @@ async function init() {
       if (await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()) $('touchId').hidden = false;
     } catch { /* leave it hidden */ }
   }
+  if (embed) parent.postMessage({ latch: 'ready' }, '*');
 }
 
 // ---------- unlock with the passcode ----------
@@ -207,6 +210,8 @@ form.addEventListener('submit', async (event) => {
 // ---------- unlock with Touch ID ----------
 $('touchId').addEventListener('click', async () => {
   $('error').textContent = '';
+  // Touch ID is tied to this page's own address, which differs inside a locked page, so it opens the small unlock window.
+  if (embed) return void send({ type: 'openUnlockWindow' });
   try {
     const begin = await send({ type: 'touchIdChallenge' });
     if (!begin.ok) return fail('Touch ID is not set up. Use your passcode.');

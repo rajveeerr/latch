@@ -46,7 +46,7 @@ try {
   if (!admin.url().includes('options.html')) await admin.goto(ext('ui/options.html'));
   const send = (m) => admin.evaluate((msg) => chrome.runtime.sendMessage(msg), m);
   const isLocked = () => worker.evaluate(async () => (await chrome.storage.local.get('state')).state?.locked === true);
-  const settings = (s) => send({ type: 'saveSettings', settings: s, passcode: PASS });
+  const settings = (s) => send({ type: 'saveSettings', settings: { lockStyle: 'window', ...s }, passcode: PASS });   // these checks are about when it locks, written for the lock-window style
   const unlock = async () => { await send({ type: 'unlock', passcode: PASS }); for (let i = 0; i < 40 && await isLocked(); i++) await sleep(150); };
   const waitFor = async (fn, ms) => { const end = Date.now() + ms; while (Date.now() < end) { if (await fn()) return true; await sleep(500); } return false; };
   const idleState = (secs) => worker.evaluate((s) => new Promise((r) => chrome.idle.queryState(s, r)), secs);

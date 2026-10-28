@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULTS, normalizeSettings, isWeakening, covers } from '../../src/lib/settings.js';
+import { DEFAULTS, normalizeSettings, isWeakening, covers, overlayStyle } from '../../src/lib/settings.js';
 
 test('missing or garbage input falls back to defaults', () => {
   assert.deepEqual(normalizeSettings(undefined), DEFAULTS);
@@ -52,4 +52,18 @@ test('"everything" covers every window; "private only" covers only private ones'
   assert.equal(covers(privateOnly, { incognito: false }), false);
   assert.equal(covers(privateOnly, { incognito: true }), true);
   assert.equal(covers(privateOnly, {}), false, 'unknown is treated as not private');
+});
+
+test('lock style: overlay by default, a bad value falls back, and moving from the lock window to the overlay counts as weakening', () => {
+  assert.equal(DEFAULTS.lockStyle, 'overlay');
+  assert.equal(normalizeSettings({ lockStyle: 'window' }).lockStyle, 'window');
+  assert.equal(normalizeSettings({ lockStyle: 'sideways' }).lockStyle, 'overlay');
+  assert.equal(isWeakening({ ...DEFAULTS, lockStyle: 'window' }, DEFAULTS), true);
+  assert.equal(isWeakening(DEFAULTS, { ...DEFAULTS, lockStyle: 'window' }), false);
+});
+
+test('the overlay needs the page cover: without it the lock window is used', () => {
+  assert.equal(overlayStyle(DEFAULTS), true);
+  assert.equal(overlayStyle({ ...DEFAULTS, coverPages: false }), false);
+  assert.equal(overlayStyle({ ...DEFAULTS, lockStyle: 'window' }), false);
 });

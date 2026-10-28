@@ -8,9 +8,11 @@
   if (window.__latchCover && window.__latchCover.alive()) return;
   window.__latchCover = { alive };
   for (const stranded of document.querySelectorAll('[data-latch-cover]')) stranded.remove();   // a cover the dead copy could not remove
-  let settings = { coverPages: true, pauseMedia: true, scope: 'profile' };
+  let settings = { coverPages: true, pauseMedia: true, scope: 'profile', lockStyle: 'overlay' };
   let locked = false;
   let host = null;
+  let root = null;
+  let frame = null;        // the unlock screen (an extension page) shown inside the cover, only in the tab being looked at
 
   const isTop = window === window.top;
   const isPrivate = chrome.extension?.inIncognitoContext === true;
@@ -35,7 +37,7 @@
       'position:fixed', 'inset:0', 'margin:0', 'padding:0', 'border:0', 'width:100vw', 'height:100vh',
       'max-width:none', 'max-height:none', 'overflow:hidden', 'background:#f6f4ef', 'z-index:2147483647', 'display:block',
     ].map((rule) => rule + ' !important;').join('');
-    const root = host.attachShadow({ mode: 'closed' });
+    root = host.attachShadow({ mode: 'closed' });
     root.innerHTML = `
       <style>
         :host { color-scheme: light dark; }
@@ -49,6 +51,7 @@
                  font: 600 13.5px/1 inherit; color: #fff; background: linear-gradient(180deg, #3d61ec, #2142cf);
                  box-shadow: inset 0 1px 0 rgba(255,255,255,.24), 0 1px 2px rgba(20,40,140,.35); }
         button:focus-visible { outline: 2px solid #f6f4ef; box-shadow: 0 0 0 4px #2b4fdb; }
+        iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #f6f4ef; color-scheme: light dark; }
         @media (prefers-color-scheme: dark) {
           .wrap { background: #0b0e16; color: #eef1f8; } span { color: #9aa3ba; }
           button:focus-visible { outline-color: #0b0e16; box-shadow: 0 0 0 4px #7c98ff; }
@@ -67,10 +70,40 @@
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     // Move keyboard focus out of the page and onto the cover, so typing and Tab cannot reach what is behind it.
     try { document.activeElement?.blur(); root.getElementById('unlock').focus(); } catch { /* ignore */ }
+    syncFrame();
   }
 
+  // The unlock screen lives in an iframe of one of our own pages, not in this page: a page's own scripts can listen to key
+  // presses in its document, but not inside a frame from another origin, so the passcode cannot be read by the site.
+  // It is only loaded while this tab is visible, so fifty locked tabs do not load fifty lock screens.
+  const wantsFrame = () => applies() && settings.lockStyle !== 'window' && document.visibilityState === 'visible';
+  function syncFrame() {
+    if (!host || !host.isConnected || !root) return;
+    if (!wantsFrame()) { dropFrame(); return; }
+    if (frame && frame.isConnected) return;
+    frame = document.createElement('iframe');
+    frame.title = 'Unlock Latch';
+    frame.setAttribute('allow', 'publickey-credentials-get');
+    frame.src = chrome.runtime.getURL('ui/lock.html#embed');
+    root.append(frame);
+    // If the screen does not report back (a page policy blocked the frame), take it away so the plain "Unlock" card shows.
+    const mine = frame;
+    setTimeout(() => { if (frame === mine && !mine.dataset.ready) dropFrame(); }, 2500);
+  }
+  function dropFrame() {
+    if (frame) { frame.remove(); frame = null; }
+    try { root?.getElementById('unlock')?.focus(); } catch { /* ignore */ }
+  }
+  window.addEventListener('message', (event) => {
+    if (!frame || event.source !== frame.contentWindow || event.data?.latch !== 'ready') return;
+    frame.dataset.ready = '1';
+    try { frame.focus(); } catch { /* ignore */ }
+  });
+  document.addEventListener('visibilitychange', syncFrame);
+
   function unmount() {
-    if (host) { host.remove(); host = null; }
+    if (frame) { frame.remove(); frame = null; }
+    if (host) { host.remove(); host = null; root = null; }
   }
 
   function apply() {

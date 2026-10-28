@@ -88,6 +88,7 @@ function readForm() {
   for (const k of NUMBERS) s[k] = Number($(k).value || 0);
   s.scope = document.querySelector('input[name="scope"]:checked')?.value || saved.scope;
   s.lockWindow = $('lockFullscreen').checked ? 'fullscreen' : 'fill';
+  s.lockStyle = $('lockOverlay').checked ? 'overlay' : 'window';
   s.hideMode = $('hideStrict').checked ? 'close' : 'minimize';
   return s;
 }
@@ -97,6 +98,8 @@ function writeForm(s) {
   for (const k of NUMBERS) $(k).value = s[k] || '';       // zero reads as an empty box, not a stray "0 min"
   $(s.scope === 'private' ? 'scopePrivate' : 'scopeProfile').checked = true;
   $('lockFullscreen').checked = s.lockWindow === 'fullscreen';
+  $('lockOverlay').checked = s.lockStyle !== 'window';
+  $('lockFullscreen').disabled = s.lockStyle !== 'window';          // a full-screen lock window only exists in the lock-window style
   $('hideStrict').checked = s.hideMode === 'close';
   $('hideStrictRow').hidden = !(status && status.mac);          // closing windows is only offered where it is safe: macOS
   syncChips();
@@ -209,7 +212,9 @@ async function saveSettings(passcode = '') {
 
 for (const k of BOOLEANS) $(k).addEventListener('change', () => saveSettings());
 for (const radio of document.querySelectorAll('input[name="scope"]')) radio.addEventListener('change', () => saveSettings());
+// The two lock-window switches are alternatives: turning one on turns the other off.
 $('lockFullscreen').addEventListener('change', () => saveSettings());
+$('lockOverlay').addEventListener('change', () => { $('lockFullscreen').disabled = $('lockOverlay').checked; saveSettings(); });
 $('hideStrict').addEventListener('change', async () => {
   if (!$('hideStrict').checked) return saveSettings();
   await braveCheck;

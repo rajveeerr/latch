@@ -77,6 +77,9 @@ try {
   await options.click('#obSkip');
   await options.waitForSelector('#content:not([hidden])');
   ok('first run: onboarding sets a passcode, then a recovery code that must be acknowledged');
+  // The checks below are about the separate lock window, so choose that style (the overlay has its own scenarios in windows.mjs).
+  await options.evaluate(async (pass) => chrome.runtime.sendMessage({ type: 'saveSettings', settings: { ...(await chrome.runtime.sendMessage({ type: 'getSettings' })).settings, lockStyle: 'window' }, passcode: pass }), PASS);
+  await options.reload(); await options.waitForSelector('#content:not([hidden])');      // so the form shows the style that is now saved
 
   // A page that is playing sound with an unsaved draft.
   const page = await context.newPage();

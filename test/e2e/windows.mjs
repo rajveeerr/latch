@@ -78,7 +78,7 @@ try {
 
   // set up: a passcode, and the inactivity timer off so nothing locks by itself
   assert.equal((await send({ type: 'setPasscode', passcode: PASS })).ok, true);
-  assert.equal((await send({ type: 'saveSettings', settings: { autoLockMinutes: 0, lockOnStartup: false, lockOnSystemLock: false, hideMode: 'minimize' }, passcode: PASS })).ok, true);
+  assert.equal((await send({ type: 'saveSettings', settings: { autoLockMinutes: 0, lockOnStartup: false, lockOnSystemLock: false, hideMode: 'minimize', lockStyle: 'window' }, passcode: PASS })).ok, true);   // the matrix below is for the lock-window style; the overlay has its own scenarios
 
   // ---- helpers in the browser's own terms ----
   const W = (fn, ...args) => worker.evaluate(([f, a]) => new Function('return ' + f)()(...a), [fn.toString(), args]);
@@ -400,11 +400,128 @@ try {
     await closeWin(a);
   });
 
+
+  // ---------- the lock on the window itself ----------
+  const setStyle = async (lockStyle) => assert.equal((await send({ type: 'saveSettings', settings: { autoLockMinutes: 0, lockOnStartup: false, lockOnSystemLock: false, hideMode: 'minimize', lockStyle }, passcode: PASS })).ok, true);
+  const lockHere = async () => { assert.equal((await send({ type: 'lock' })).ok, true); await until(lockedFlag, 'locked flag'); };
+  // The unlock screen inside a locked page is a frame of one of our own pages.
+  const unlockFrame = (page) => page.frames().find((f) => f.url().includes('ui/lock.html'));
+  const typeInto = async (frame, text) => { await frame.fill('#passcode', text); await frame.click('#unlock'); };
+  const weMinimized = (wid) => W(async (i) => Object.keys(((await chrome.storage.session.get('session')).session || {}).windowStates || {}).includes(String(i)), wid);
+
+  await scenario('overlay: the lock sits on the window itself; nothing opens, moves or minimizes; the passcode is typed there', async () => {
+    await setStyle('overlay');
+    await setStyle('overlay');
+    const w = await create({ url: site('ov1'), state: 'normal', left: 80, top: 80, width: 901, height: 641 });
+    await until(() => pageFor('ov1'), 'page'); await sleep(500);
+    const before = await info(w);
+    const popupsBefore = await popups();
+    await pageFor('ov1').evaluate(() => { window.__keys = []; for (const t of ['keydown', 'keypress', 'keyup', 'input']) window.addEventListener(t, (e) => window.__keys.push(e.key || e.data || t), true); });   // a hostile page listening for the passcode
+    await lockHere();
+    await until(async () => coverUp(pageFor('ov1')), 'the page to be covered');
+    const frame = await until(() => unlockFrame(pageFor('ov1')), 'the unlock screen inside the cover', 8000);
+    await until(async () => frame.isVisible('#passcode'), 'the passcode field');
+    assert.equal(await popups(), popupsBefore, 'no lock window was opened');
+    assert.ok(sameBounds(before, await info(w)), 'the window did not move or resize');
+    assert.equal((await info(w)).state, 'normal', 'the window was not minimized');
+    assert.equal(await weMinimized(w), false, 'it was not even marked for minimizing');
+    await typeInto(frame, 'not the passcode');
+    await until(async () => (await frame.textContent('#error')).toLowerCase().includes('wrong'), 'a wrong-passcode message');
+    assert.ok(await coverUp(pageFor('ov1')), 'a wrong passcode keeps it covered');
+    await typeInto(frame, PASS);
+    await until(async () => !(await lockedFlag()), 'unlocked');
+    assert.deepEqual(await pageFor('ov1').evaluate(() => window.__keys), [], 'the page itself never saw a key typed into the unlock screen');
+    await until(async () => !(await coverUp(pageFor('ov1'))), 'the cover to go away');
+    assert.ok(sameBounds(before, await info(w)), 'same place after unlocking');
+    assert.equal(await popups(), popupsBefore, 'still no extra window');
+    await closeWin(w);
+  });
+
+  await scenario('overlay: a full-screen window is covered where it is, without leaving full screen', async () => {
+    await setStyle('overlay');
+    const w = await create({ url: site('ov2'), state: 'fullscreen' });
+    await until(async () => (await info(w))?.state === 'fullscreen', 'fullscreen', 20000); await until(() => pageFor('ov2'), 'page'); await sleep(600);
+    await lockHere();
+    await until(async () => coverUp(pageFor('ov2')), 'covered');
+    await until(() => unlockFrame(pageFor('ov2')), 'the unlock screen', 8000);
+    await sleep(700);
+    assert.equal((await info(w)).state, 'fullscreen', 'it stayed in full screen: no jump');
+    await typeInto(unlockFrame(pageFor('ov2')), PASS);
+    await until(async () => !(await lockedFlag()), 'unlocked');
+    assert.equal((await info(w)).state, 'fullscreen', 'and it is still in full screen');
+    await closeWin(w);
+  });
+
+  await scenario('overlay: only the tab you are looking at loads the unlock screen', async () => {
+    await setStyle('overlay');
+    const w = await create({ url: [site('ov3-a'), site('ov3-b'), site('ov3-c')], state: 'normal', left: 100, top: 100, width: 800, height: 600 });
+    await until(() => pageFor('ov3-a') && pageFor('ov3-b') && pageFor('ov3-c'), 'tabs'); await sleep(600);
+    await lockHere();
+    await until(async () => coverUp(pageFor('ov3-a')) && coverUp(pageFor('ov3-b')) && coverUp(pageFor('ov3-c')), 'every tab covered');
+    await sleep(1500);
+    for (const n of ['ov3-a', 'ov3-b', 'ov3-c']) {
+      const visible = (await pageFor(n).evaluate(() => document.visibilityState)) === 'visible';
+      assert.equal(Boolean(unlockFrame(pageFor(n))), visible, `${n}: the unlock screen is loaded exactly when the tab is visible`);
+    }
+    await unlock();
+    await closeWin(w);
+  });
+
+  await scenario('overlay: a window showing a browser page (new tab) cannot hold a cover, so it is put away; the other windows stay as they are', async () => {
+    await setStyle('overlay');
+    const w = await create({ url: 'chrome://newtab', state: 'normal', left: 120, top: 120, width: 800, height: 600 });
+    await sleep(800);
+    const popupsBefore = await popups();
+    await lockHere();
+    await until(async () => weMinimized(w), 'the new-tab window to be put away');
+    assert.equal(await popups(), popupsBefore, 'a window that can hold the cover is still there, so no unlock window is needed');
+    const anchor = pageFor('anchor');
+    assert.ok(await coverUp(anchor), 'the anchor window is covered in place');
+    await typeInto(await until(() => unlockFrame(anchor), 'the unlock screen in the anchor window', 8000), PASS);
+    await until(async () => !(await lockedFlag()), 'unlocked');
+    await closeWin(w);
+  });
+
+  await scenario('overlay: when no window can hold the cover, a small unlock window opens, and unlocking closes it', async () => {
+    await setStyle('overlay');
+    const anchorTab = await W(async () => { const all = await chrome.tabs.query({}); const anchorWin = all.find((x) => (x.url || '').includes('t=anchor')).windowId; const t = all.find((x) => x.windowId === anchorWin && (x.url || '').includes('options.html')); return { id: t.id, windowId: anchorWin }; });
+    await W((id) => chrome.tabs.update(id, { active: true }), anchorTab.id);       // the anchor window now shows an extension page too
+    await sleep(500);
+    const popupsBefore = await popups();
+    await lockHere();
+    await until(async () => (await popups()) > popupsBefore, 'the small unlock window');
+    const pop = await until(() => context.pages().find((pg) => pg.url().includes('ui/lock.html') && !pg.url().includes('#embed')), 'the unlock window page', 8000);
+    await pop.fill('#passcode', PASS); await pop.click('#unlock');
+    await until(async () => !(await lockedFlag()), 'unlocked');
+    await until(async () => (await popups()) === popupsBefore, 'the unlock window to close');
+    const back = await W(async (wid) => { const t = (await chrome.tabs.query({ windowId: wid })).find((x) => (x.url || '').includes('t=anchor')); if (t) await chrome.tabs.update(t.id, { active: true }); return Boolean(t); }, anchorTab.windowId);
+    assert.ok(back, 'the anchor page is back in front');
+  });
+
+  await scenario('overlay: opening a browser page in a locked window puts that window away at once', async () => {
+    await setStyle('overlay');
+    await setStyle('overlay');
+    const a = await create({ url: site('ov5-a'), state: 'normal', left: 60, top: 60, width: 700, height: 500 });
+    const b = await create({ url: site('ov5-b'), state: 'normal', left: 260, top: 160, width: 700, height: 500 });
+    await until(() => pageFor('ov5-a') && pageFor('ov5-b'), 'pages'); await sleep(500);
+    await lockHere();
+    await until(async () => coverUp(pageFor('ov5-a')) && coverUp(pageFor('ov5-b')), 'both covered');
+    assert.equal(await weMinimized(b), false);
+    await W(async (i) => { const [t] = await chrome.tabs.query({ windowId: i, active: true }); await chrome.tabs.update(t.id, { url: 'chrome://newtab' }); }, b);
+    await until(async () => weMinimized(b), 'the window that now shows a browser page to be put away');
+    assert.equal(await weMinimized(a), false, 'the other window stays where it is');
+    assert.ok(await coverUp(pageFor('ov5-a')), 'and stays covered');
+    await unlock();
+    await closeWin(a); await closeWin(b);
+  });
+
+  await setStyle('window');
+
   if (process.platform === 'darwin') {
     const strictWorks = (await send({ type: 'probeStrict' })).ok;
     console.log(`  (hiding windows completely: ${strictWorks ? 'this browser can do it' : 'refused by the browser check'})`);
     const tallUrl = (name) => `${site(name).split('?')[0]}tall.html?t=${name}`;
-    const setMode = (mode) => send({ type: 'saveSettings', settings: { hideMode: mode }, passcode: PASS });
+    const setMode = (mode) => send({ type: 'saveSettings', settings: { hideMode: mode, lockStyle: 'window' }, passcode: PASS });
 
     if (strictWorks) await scenario('complete hiding: windows vanish while locked and come back exactly (size, tab order, pinned, group, active tab, scroll)', async () => {
       assert.equal((await setMode('close')).ok, true);

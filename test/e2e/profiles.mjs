@@ -34,7 +34,7 @@ try {
   if (!admin.url().includes('options.html')) await admin.goto(`chrome-extension://${id}/ui/options.html`);
   const send = (m) => admin.evaluate((msg) => chrome.runtime.sendMessage(msg), m);
   assert.equal((await send({ type: 'setPasscode', passcode: PASS })).ok, true);
-  assert.equal((await send({ type: 'saveSettings', settings: { autoLockMinutes: 0, lockOnStartup: false, lockOnSystemLock: false }, passcode: PASS })).ok, true);
+  assert.equal((await send({ type: 'saveSettings', settings: { autoLockMinutes: 0, lockOnStartup: false, lockOnSystemLock: false, lockStyle: 'window' }, passcode: PASS })).ok, true);
 
   // a window of ANOTHER profile, in the same browser process
   second = spawn(BRAVE, [...common, '--profile-directory=Profile 2', site('other-profile')], { stdio: 'ignore' });
@@ -57,22 +57,23 @@ try {
   await worker.evaluate(async (url) => { const [w] = (await chrome.windows.getAll({ populate: true })).filter((x) => x.tabs.some((t) => t.url?.includes('keeper'))); await chrome.tabs.create({ windowId: w.id, url, active: false }); }, `chrome-extension://${id}/ui/options.html`);
   await sleep(1200);
   admin = context.pages().filter((p) => p.url().includes('options.html')).at(-1);
-  for (const mode of ['minimize', 'close']) {
-    assert.equal((await send({ type: 'saveSettings', settings: { hideMode: mode }, passcode: PASS })).ok, true);
+  for (const [mode, style] of [['minimize', 'window'], ['close', 'window'], ['minimize', 'overlay']]) {
+    const label = style === 'overlay' ? 'overlay' : mode;
+    assert.equal((await send({ type: 'saveSettings', settings: { hideMode: mode, lockStyle: style }, passcode: PASS })).ok, true);
     assert.equal((await send({ type: 'lock' })).ok, true);
     await sleep(2500);
     const after = await windowOf(targets[0].targetId);
-    assert.equal(after.windowState, before.windowState, `${mode}: the other profile's window state is untouched`);
-    assert.ok(Math.abs(after.left - before.left) <= 2 && Math.abs(after.top - before.top) <= 2 && after.width === before.width && after.height === before.height, `${mode}: bounds untouched`);
+    assert.equal(after.windowState, before.windowState, `${label}: the other profile's window state is untouched`);
+    assert.ok(Math.abs(after.left - before.left) <= 2 && Math.abs(after.top - before.top) <= 2 && after.width === before.width && after.height === before.height, `${label}: bounds untouched`);
     const stillThere = (await cdp.send('Target.getTargets')).targetInfos.some((t) => t.url.includes('other-profile'));
-    assert.ok(stillThere, `${mode}: the other profile's window is still open`);
+    assert.ok(stillThere, `${label}: the other profile's window is still open`);
     const lockWins = await worker.evaluate(async () => (await chrome.windows.getAll({ windowTypes: ['popup'] })).length);
-    assert.ok(lockWins >= 1, 'the lock window is up');
+    if (style === 'window') assert.ok(lockWins >= 1, 'the lock window is up');
     assert.equal((await send({ type: 'unlock', passcode: PASS })).ok, true);
     await sleep(2500);
-    console.log(`  ✓ ${mode}: Latch locked its own profile and left the other profile's window completely alone`);
+    console.log(`  ✓ ${label}: Latch locked its own profile and left the other profile's window completely alone`);
   }
-  console.log('\n2 passed, 0 failed.');
+  console.log('\n3 passed, 0 failed.');
 } catch (err) {
   failed = true;
   console.error('\nFAILED:', err.message || err);

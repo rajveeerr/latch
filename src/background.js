@@ -7,14 +7,16 @@
 //   * everything is reversible: windows are minimized and restored, tabs muted and unmuted
 //   * if enforcing the lock fails repeatedly, unlock rather than leave the browser stuck
 
-import { DEFAULTS, normalizeSettings, isWeakening, covers } from './lib/settings.js';
+import { DEFAULTS, normalizeSettings, isWeakening, covers, overlayStyle } from './lib/settings.js';
 import {
   hasPasscode, setPasscode, verifyPasscode, resetWithRecovery, regenerateRecovery,
 } from './lib/auth.js';
 import { logEvent, getEvents, clearEvents, failuresSinceUnlock } from './lib/activity.js';
 import { verifyAssertion, checkRegistration, newChallenge, b64u } from './lib/webauthn.js';
 
-const LOCK_PAGE = chrome.runtime.getURL('ui/lock.html');
+// Built from the id, not getURL: for a page that pages may frame (see the manifest) getURL gives a random per-session address,
+// while the windows we open for it, and the check that closeLockWindow does, use the normal one.
+const LOCK_PAGE = `chrome-extension://${chrome.runtime.id}/ui/lock.html`;
 const EXTENSION_ORIGIN = chrome.runtime.getURL('');
 const ORIGIN = EXTENSION_ORIGIN.replace(/\/$/, '');   // what WebAuthn reports as the origin
 const RP_ID = ORIGIN;                                 // Chromium also uses the whole origin as the relying party id
@@ -120,7 +122,13 @@ async function enforceLocked({ fast = false } = {}) {
   if (!state.locked) return;
   const settings = await getSettings();
   try {
-    if (fast) {
+    if (overlayStyle(settings)) {
+      // The lock sits on the windows themselves: every page already carries the cover with the unlock screen in it. All that is
+      // left is a window whose visible tab cannot hold a cover (new tab page, settings), which is minimized like before.
+      if (!fast) { minimizedAt.clear(); await ensureCovers(settings); }
+      await secureExposed(settings, { fresh: !fast });
+      if (!fast && settings.muteTabs) await muteAudibleTabs(settings);
+    } else if (fast) {
       // Something came forward while locked (the Dock, Mission Control, Cmd+Tab). Do only the instant things, in this order:
       // the lock window first, then put the window away. The covers are already on every page, so no per-tab work here.
       if (settings.scope === 'profile') await ensureLockWindow(settings);
@@ -130,7 +138,7 @@ async function enforceLocked({ fast = false } = {}) {
       // over the screen, and only then are windows taken out of the way (the slow, animated part).
       await ensureCovers(settings);
       if (settings.scope === 'profile') await ensureLockWindow(settings);
-      if (settings.hideMode === 'close' && (await isMac()) && !(await isBrave())) await strictHide(settings);
+      if (settings.hideMode === 'close' && (await isMac()) && !(await isBrave())) await strictHide(settings);   // (only reached in the lock-window style)
       if (settings.minimizeWindows) await minimizeWindows(settings);
       if (settings.muteTabs) await muteAudibleTabs(settings);
     }
@@ -149,14 +157,15 @@ async function enforceLocked({ fast = false } = {}) {
 // starts the next pass: an endless loop. A window is minimized again only when it was just brought forward, and not
 // twice within 0.8 seconds.
 const minimizedAt = new Map();
-async function minimizeWindows(settings, { full = true } = {}) {
-  if (full) minimizedAt.clear();
+async function minimizeWindows(settings, { full = true, only = null } = {}) {
+  if (full && !only) minimizedAt.clear();
   const forward = broughtForward; broughtForward = null;
   const state = await getState();
   const windowStates = { ...state.windowStates };
   const windows = await chrome.windows.getAll({ windowTypes: ['normal', 'app'] });
   for (const win of windows) {
     if (win.id === state.lockWindowId || !covers(settings, win)) continue;
+    if (only && !only.includes(win.id)) continue;
     // What to put back on unlock. The browser's reported state cannot be trusted to say "minimized" (Brave on macOS reports
     // "normal" for a window that really is minimized), so every window we ask to minimize is always asked to come back.
     if (!(win.id in windowStates)) windowStates[win.id] = { state: win.state, left: win.left, top: win.top, width: win.width, height: win.height };
@@ -310,6 +319,53 @@ async function strictRestore() {
   }
 }
 
+// ---------- locking over the window itself ----------
+// Browser pages (new tab, settings) and the web store cannot hold a cover, so a window whose visible tab is one of those would
+// show through. Such a window is minimized like in the lock-window style; every other window is locked in place, untouched.
+const BROWSER_PAGE = /^(chrome|brave|edge|about|chrome-extension|chrome-search|chrome-untrusted|devtools|view-source):/i;
+
+async function pingCovered(tabId) {
+  try {
+    const reply = await Promise.race([chrome.tabs.sendMessage(tabId, { type: 'latch-ping' }, { frameId: 0 }), sleep(400).then(() => null)]);
+    return reply?.covered === true;
+  } catch { return false; }
+}
+
+// Does the tab you can see in this window carry the cover?
+async function windowShowsCover(win) {
+  const [tab] = await chrome.tabs.query({ windowId: win.id, active: true });
+  if (!tab) return true;
+  if (BROWSER_PAGE.test(tab.url || tab.pendingUrl || '')) return false;
+  if (await pingCovered(tab.id)) return true;
+  // Not there yet: the page may have been open before Latch loaded, or still be loading. Put the script in and look again.
+  try { await chrome.scripting.executeScript({ target: { tabId: tab.id, allFrames: true }, files: ['src/cover.js'] }); } catch { return false; }   // a page scripts cannot run in
+  for (let i = 0; i < 6; i++) { await sleep(150); if (await pingCovered(tab.id)) return true; }
+  return false;
+}
+
+async function secureExposed(settings, { fresh }) {
+  const state = await getState();
+  const forward = broughtForward;
+  const wins = (await chrome.windows.getAll({ windowTypes: ['normal', 'app'] }))
+    // A window we put away is skipped (the browser may still report it as "normal"), unless it was just brought forward again.
+    .filter((win) => win.id !== state.lockWindowId && covers(settings, win) && win.state !== 'minimized' && (!minimizedAt.has(win.id) || win.id === forward));
+  const exposed = [], visible = [];
+  await Promise.all(wins.map(async (win) => ((await windowShowsCover(win)) ? visible : exposed).push(win.id)));
+  if (exposed.length) await minimizeWindows(settings, { full: fresh, only: exposed });
+  broughtForward = null;
+  // Nothing left to type the passcode into: open the small unlock window, so there is always a way back in.
+  if (!visible.length) await ensureUnlockWindow();
+}
+
+async function ensureUnlockWindow() {
+  const state = await getState();
+  if (state.lockWindowId != null) {
+    try { await chrome.windows.update(state.lockWindowId, { focused: true }); return; } catch { /* closed: open a new one */ }
+  }
+  const win = await chrome.windows.create({ url: LOCK_PAGE + '#small', type: 'popup', focused: true, width: 520, height: 700 });
+  await patchState({ lockWindowId: win.id });
+}
+
 // Content scripts only run in pages that load after Latch is installed. Tabs that were already open, which is
 // every tab after a reload or an update, are given the cover here, then the visible tab of each window is checked.
 async function ensureCovers(settings) {
@@ -353,7 +409,7 @@ function openUnlockWindow() {
     if (state.lockWindowId != null) {
       try { await chrome.windows.update(state.lockWindowId, { focused: true }); return { ok: true }; } catch { /* closed */ }
     }
-    const win = await chrome.windows.create({ url: LOCK_PAGE, type: 'popup', focused: true, width: 520, height: 700 });
+    const win = await chrome.windows.create({ url: LOCK_PAGE + '#small', type: 'popup', focused: true, width: 520, height: 700 });
     await patchState({ lockWindowId: win.id });
     return { ok: true };
   });
@@ -484,7 +540,12 @@ chrome.windows.onRemoved.addListener(async (windowId) => {
   if (state.locked && (await getSettings()).scope === 'profile') setTimeout(() => enforceSoon(), 250);
 });
 
+// The overlay style only needs a look whenever the visible tab of some window may have changed.
+const lockedOverlay = async () => (await getState()).locked && overlayStyle(await getSettings());
+chrome.tabs.onActivated.addListener(async () => { if (await lockedOverlay()) enforceSoon(); });
+
 chrome.tabs.onUpdated.addListener(async (tabId, change) => {
+  if ((change.url || change.status === 'loading') && (await lockedOverlay())) enforceSoon();
   if (change.status === 'complete') applyPendingScroll(tabId);
   if (change.status === 'complete' && (await getState()).locked) {
     chrome.scripting.executeScript({ target: { tabId, allFrames: true }, files: ['src/cover.js'] }).catch(() => {});   // a tab that finished loading while locked
