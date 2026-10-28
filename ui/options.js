@@ -54,6 +54,7 @@ function explain(result) {
 // ---------- the passcode bar: any change that weakens protection asks here, in place ----------
 let gate = null;
 function askPasscode(label, apply, onCancel) {
+  if (gate?.onCancel) gate.onCancel();         // a gate that is replaced is cancelled: its form control goes back to what is saved
   gate = { apply, onCancel };
   $('authLabel').textContent = label;
   $('authError').textContent = '';
@@ -90,6 +91,8 @@ function readForm() {
   s.scope = document.querySelector('input[name="scope"]:checked')?.value || saved.scope;
   s.lockWindow = $('lockFullscreen').checked ? 'fullscreen' : 'fill';
   s.lockStyle = document.querySelector('input[name="lockStyle"]:checked')?.value || saved.lockStyle;
+  // Off a Mac the helper row is hidden and the form shows the overlay for a saved 'native'. Do not turn that display into a saved change.
+  if (!(status && status.mac) && saved.lockStyle === 'native' && s.lockStyle === 'overlay') s.lockStyle = 'native';
   s.hideMode = $('hideStrict').checked ? 'close' : 'minimize';
   return s;
 }
@@ -106,7 +109,6 @@ function writeForm(s) {
   renderHow();
   if (mac && style === 'native' && !helperChecked) { helperChecked = true; checkHelper(); }       // say right away whether it is installed
   $('hideStrict').checked = s.hideMode === 'close';
-  $('hideStrictRow').hidden = !(status && status.mac);          // closing windows is only offered where it is safe: macOS
   syncChips();
 }
 
@@ -240,6 +242,7 @@ function renderHow() {
 
   // These two only mean something for the separate lock window.
   for (const id of ['lockFullscreen', 'minimizeWindows']) $(id).closest('.row').hidden = style !== 'window';
+  $('hideStrictRow').hidden = !(mac && style === 'window');          // closing windows is part of the separate lock window only
 
   // One plain sentence: what a lock will do right now, not what the setting is called.
   let tone = 'ok', text;
@@ -260,7 +263,7 @@ function renderHow() {
   $('checkHelper').hidden = found;
   $('touchRow').hidden = !found;
   $('helperTouchId').disabled = !(found && helperBio);
-  $('touchHelp').textContent = found && !helperBio
+  $('helperTouchHelp').textContent = found && !helperBio
     ? 'This Mac reports no Touch ID (no sensor, or no finger enrolled), so only the passcode works.'
     : 'Adds a fingerprint button to the lock screen, and Return on an empty field uses it. Your passcode always works too.';
   $('helperTitle').textContent = found ? 'Helper found' : helperState === 'unknown' ? 'Checking the helper…'
@@ -287,10 +290,14 @@ async function checkHelper(quiet = false) {
 function pollHelper() {
   clearTimeout(helperTimer);
   helperTimer = setTimeout(() => {
-    if (helperState === 'found' || $('helperCard').hidden || document.hidden) return pollHelper();
+    if ($('helperCard').hidden || document.hidden) return pollHelper();      // not looking at it: keep the timer, skip the check
+    if (helperState === 'found') return;                                     // found: stop (the page re-checks when it is shown again)
     checkHelper(true);
   }, 3000);
 }
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && !$('helperCard').hidden && helperChecked) checkHelper(true);   // e.g. the helper was removed meanwhile
+});
 $('hideStrict').addEventListener('change', async () => {
   if (!$('hideStrict').checked) return saveSettings();
   await braveCheck;

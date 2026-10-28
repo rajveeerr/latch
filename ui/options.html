@@ -158,12 +158,12 @@
                 <span class="grow"><span class="title" id="helperTitle">Latch helper</span><span class="muted small block" id="helperHelp"></span></span>
                 <button class="btn quiet" type="button" id="checkHelper">Check again</button>
               </div>
-              <ol class="steps" id="helperSteps">
+              <ol class="setup" id="helperSteps">
                 <li><span class="stepBody"><b>Open Latch's folder</b><span class="muted small block">This opens Latch in your extensions. Click the path next to <i>Source</i> and Finder shows the folder.</span><button class="btn" type="button" id="openLatchPage">Open Latch in extensions<svg class="i"><use href="icons.svg#arrow-up-right"/></svg></button></span></li>
                 <li><span class="stepBody"><b>Double-click “Install Latch Helper”</b><span class="muted small block">It sits next to <code>manifest.json</code>. It takes a second and needs no developer tools. macOS may ask you to confirm once: right-click it and choose Open.</span></span></li>
                 <li><span class="stepBody"><b>Come back here</b><span class="muted small block waiting"><span class="dot"></span><span id="waitLine">Waiting for the helper. This page notices by itself, and there is nothing to reload.</span></span></span></li>
               </ol>
-              <label class="row" id="touchRow" hidden><span class="rowIcon"><svg class="i"><use href="icons.svg#fingerprint"/></svg></span><span class="grow"><span class="title">Unlock with Touch ID</span><span class="muted small block" id="touchHelp">Adds a fingerprint button to the lock screen, and Return on an empty field uses it. Your passcode always works too.</span></span><input class="switch" role="switch" type="checkbox" id="helperTouchId"></label>
+              <label class="row" id="touchRow" hidden><span class="rowIcon"><svg class="i"><use href="icons.svg#fingerprint"/></svg></span><span class="grow"><span class="title">Unlock with Touch ID</span><span class="muted small block" id="helperTouchHelp">Adds a fingerprint button to the lock screen, and Return on an empty field uses it. Your passcode always works too.</span></span><input class="switch" role="switch" type="checkbox" id="helperTouchId"></label>
               <details class="about">
                 <summary>What does the helper do?</summary>
                 <ul>

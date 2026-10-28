@@ -22,13 +22,15 @@ func biometricAvailable() -> Bool {
 
 // Shows the system Touch ID sheet. Only a successful scan is reported, and the extension decides what it is worth.
 var biometricBusy = false
+var biometricContext: LAContext?
 func askBiometric(done: @escaping (Bool) -> Void) {
     guard !biometricBusy else { return }
     biometricBusy = true
     let context = LAContext()
+    biometricContext = context
     context.localizedCancelTitle = "Use passcode"
     context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: "unlock your browser") { ok, _ in
-        DispatchQueue.main.async { biometricBusy = false; done(ok) }
+        DispatchQueue.main.async { biometricBusy = false; biometricContext = nil; done(ok) }
     }
 }
 
@@ -41,7 +43,7 @@ func send(_ object: [String: Any]) {
     var packet = Data(bytes: &length, count: 4)
     packet.append(body)
     writeLock.lock(); defer { writeLock.unlock() }
-    FileHandle.standardOutput.write(packet)
+    try? FileHandle.standardOutput.write(contentsOf: packet)      // a closed pipe is simply ignored: the reader notices and exits
 }
 
 func readExactly(_ count: Int) -> Data? {
@@ -53,11 +55,13 @@ func readExactly(_ count: Int) -> Data? {
     return data
 }
 
+// nil means the connection is over (closed, or a length that cannot be right, after which the stream cannot be followed).
+// An empty dictionary is a message that could not be understood: it is skipped and the helper carries on.
 func readMessage() -> [String: Any]? {
     guard let header = readExactly(4) else { return nil }
     let length = header.withUnsafeBytes { Int(UInt32(littleEndian: $0.loadUnaligned(as: UInt32.self))) }
     guard length > 0, length < 1_048_576, let body = readExactly(length) else { return nil }
-    return (try? JSONSerialization.jsonObject(with: body)) as? [String: Any]
+    return ((try? JSONSerialization.jsonObject(with: body)) as? [String: Any]) ?? [:]
 }
 
 // MARK: - what one browser window looks like to us
@@ -92,6 +96,7 @@ final class LockPanel: NSView {
     var onSubmit: ((String) -> Void)?
     var onTouch: (() -> Void)?
     private var countdown: Timer?
+    private var busyTimer: Timer?
     private var touchOn = false
     private let stack = NSStackView()
     private let icon = NSImageView()
@@ -172,6 +177,12 @@ final class LockPanel: NSView {
         field.stringValue = ""
         message.stringValue = ""
         setBusy(true)
+        busyTimer?.invalidate()
+        busyTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: false) { [weak self] _ in
+            guard let self, !self.field.isEnabled else { return }
+            self.message.stringValue = "No answer from Latch. Try again."
+            self.setBusy(false)
+        }
         onSubmit?(typed)
     }
     @objc func useTouch() { onTouch?() }
@@ -196,7 +207,7 @@ final class LockPanel: NSView {
     func setBusy(_ busy: Bool) { field.isEnabled = !busy; button.isEnabled = !busy }
 
     func showWrong(retryAfterMs: Int?) {
-        countdown?.invalidate()
+        countdown?.invalidate(); busyTimer?.invalidate()
         if let wait = retryAfterMs, wait > 0 {
             var left = Int((Double(wait) / 1000).rounded(.up))
             message.stringValue = "Too many tries. Wait \(left) s."
@@ -222,7 +233,7 @@ final class LockPanel: NSView {
 
     func note(_ text: String) { message.stringValue = text }
 
-    func reset() { countdown?.invalidate(); field.stringValue = ""; message.stringValue = ""; setBusy(false) }
+    func reset() { countdown?.invalidate(); busyTimer?.invalidate(); field.stringValue = ""; message.stringValue = ""; setBusy(false) }
 }
 
 final class OverlayWindow: NSWindow {
@@ -240,7 +251,7 @@ final class Overlays {
     private var profile: [ProfileWindow] = []
     private(set) var locked = false
     private var timer: Timer?
-    private var keyed = false
+    private var spaceObserver: NSObjectProtocol?
     private var touchOn = false
     private var lastReport = (-1, -1)
 
@@ -249,12 +260,12 @@ final class Overlays {
     func lock(_ list: [ProfileWindow]) {
         profile = list
         locked = true
-        keyed = false
         lastReport = (-1, -1)
         tick()
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 0.06, repeats: true) { [weak self] _ in self?.tick() }
-        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main) { [weak self] _ in self?.tick() }
+        if let old = spaceObserver { NSWorkspace.shared.notificationCenter.removeObserver(old) }
+        spaceObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main) { [weak self] _ in self?.tick() }
     }
 
     func update(_ list: [ProfileWindow]) { profile = list; if locked { tick() } }
@@ -267,7 +278,8 @@ final class Overlays {
     func unlock() {
         locked = false
         timer?.invalidate(); timer = nil
-        NSWorkspace.shared.notificationCenter.removeObserver(self)
+        if let old = spaceObserver { NSWorkspace.shared.notificationCenter.removeObserver(old); spaceObserver = nil }
+        biometricContext?.invalidate()                                      // a Touch ID sheet still up goes away with the lock
         for window in windows.values { (window.contentView as? LockPanel)?.reset(); window.orderOut(nil); window.close() }
         windows.removeAll()
         NSRunningApplication(processIdentifier: browserPid)?.activate()      // give the browser its focus back
@@ -334,7 +346,7 @@ final class Overlays {
         panel.setTouch(touchOn)
         panel.onTouch = { [weak panel] in
             askBiometric { ok in
-                if ok { send(["event": "biometric"]) } else { panel?.note("Touch ID did not match. Use your passcode.") }
+                if ok { if overlays.locked { send(["event": "biometric"]) } } else { panel?.note("Touch ID did not match. Use your passcode.") }
             }
         }
         window.contentView = panel
@@ -348,6 +360,7 @@ final class Overlays {
         guard locked else { return }
         let info = (CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]]) ?? []
         var seen = Set<Int>()
+        var front: Int?
         for entry in info {
             guard (entry[kCGWindowOwnerPID as String] as? Int32) == browserPid, (entry[kCGWindowLayer as String] as? Int) == 0,
                   let number = entry[kCGWindowNumber as String] as? Int,
@@ -356,23 +369,26 @@ final class Overlays {
             guard bounds.width > 40, bounds.height > 30, belongs(bounds) || looksLikeStripThumbnail(bounds) else { continue }
             seen.insert(number)
             let rect = cocoaRect(bounds)
+            if front == nil { front = number }                          // the list is front to back, so the first is the one on top
             if let existing = windows[number] {
                 if existing.frame != rect { existing.setFrame(rect, display: true) }
                 existing.order(.above, relativeTo: number)
             } else {
                 let window = makeWindow(rect)
                 windows[number] = window
-                if !keyed {                                            // the front-most one takes the keyboard
-                    keyed = true
-                    NSApp.activate(ignoringOtherApps: true)
-                    window.makeKeyAndOrderFront(nil)
-                    window.makeFirstResponder((window.contentView as? LockPanel)?.field)
-                } else {
-                    window.order(.above, relativeTo: number)
-                }
+                window.order(.above, relativeTo: number)
             }
         }
         for (number, window) in windows where !seen.contains(number) { window.orderOut(nil); window.close(); windows[number] = nil }
+
+        // Keystrokes go to whichever app is active. If the browser has become the active one (Cmd+Tab, its Dock icon, coming back
+        // from another Space), the keys would reach it behind the lock, so take the keyboard back with the front lock window.
+        // Another app being active is left alone.
+        if let number = front, let window = windows[number], NSWorkspace.shared.frontmostApplication?.processIdentifier == browserPid {
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            window.makeFirstResponder((window.contentView as? LockPanel)?.field)
+        }
 
         // Tell the extension how it is going, so it can show its own unlock screen if this finds nothing to cover.
         let visible = info.filter { entry in
@@ -407,15 +423,16 @@ func handle(_ message: [String: Any]) {
     }
 }
 
+signal(SIGPIPE, SIG_IGN)                           // a closed pipe is reported as end of input, not as a crash
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)                 // no Dock icon, no menu bar
 
 DispatchQueue.main.async { send(["event": "ready", "version": protocolVersion, "biometric": biometricAvailable()]) }
 
 Thread.detachNewThread {
-    while let message = readMessage() { DispatchQueue.main.async { handle(message) } }
-    // The browser closed the connection (it quit, or the extension restarted). If the lock is up, leave it for a few
-    // seconds so a restarting extension can take over without a gap, then go.
+    while let message = readMessage() { if !message.isEmpty { DispatchQueue.main.async { handle(message) } } }
+    // The browser closed the connection (it quit, or the extension restarted). If the lock is up, leave it a few seconds,
+    // so it does not vanish the instant the extension restarts and starts a new helper, then go.
     DispatchQueue.main.async {
         if overlays.locked { DispatchQueue.main.asyncAfter(deadline: .now() + 3) { exit(0) } } else { exit(0) }
     }

@@ -20,6 +20,7 @@ export const helperBiometric = () => helperUp() && biometric;
 export function sendHelper(message) {
   if (!helperUp()) return false;
   if (message.cmd === 'lock') announced = true;
+  if (message.cmd === 'unlock') announced = false;      // the next lock must start the helper afresh
   try { port.postMessage(message); return true; } catch { return false; }
 }
 

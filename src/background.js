@@ -90,6 +90,7 @@ async function lock(reason) {
       if (!allowed) return { ok: false, error: 'incognito-not-allowed' };
       noPrivateWindows = !(await chrome.windows.getAll({ windowTypes: ['normal'] })).some((win) => win.incognito);
     }
+    clearTimeout(closeTimer);                                         // a helper told to quit a moment ago is not to be closed under this lock
     const state = await getState();
     if (!state.locked) {
       let focusedBefore = null;
@@ -106,6 +107,7 @@ async function lock(reason) {
 let fastPending = false;
 let broughtForward = null;                       // the window the last event put in front, if it was not the lock window
 let recentPasses = [];                           // start times of recent fast passes (circuit breaker below)
+let trailing = null;
 function enforceSoon(windowId = null) {
   if (windowId != null) broughtForward = windowId;
   if (fastPending) return;                      // a burst of events needs only one pass
@@ -113,7 +115,11 @@ function enforceSoon(windowId = null) {
   // itself (a loop), so stop for a few seconds instead of spinning. The next real event after that is handled normally.
   const now = Date.now();
   recentPasses = recentPasses.filter((t) => now - t < 5000);
-  if (recentPasses.length >= 6) return;
+  if (recentPasses.length >= 6) {
+    // Too many passes: wait, then take one more look, so an event that arrives during a storm is not lost.
+    if (!trailing) trailing = setTimeout(() => { trailing = null; enforceSoon(); }, 1500);
+    return;
+  }
   recentPasses.push(now);
   fastPending = true;
   serial(async () => { fastPending = false; await enforceLocked({ fast: true }); });
@@ -165,14 +171,14 @@ async function enforceLocked({ fast = false } = {}) {
   } catch (err) {
     const failures = state.failures + 1;
     await patchState({ failures, error: String(err?.message || err) });
-    if (failures >= 3) await unlockNow({ error: 'Latch could not enforce the lock and unlocked itself: ' + (err?.message || err), method: 'safety' });
+    if (failures >= 3) await unlockInner({ error: 'Latch could not enforce the lock and unlocked itself: ' + (err?.message || err), method: 'safety' });   // (already inside the queue)
   }
 }
 
 // Tell the helper which windows of this profile exist and where, so it can keep a lock over each of them.
 async function syncHelper(settings) {
   const state = await getState();
-  const windows = (await chrome.windows.getAll())
+  const windows = (await chrome.windows.getAll({ windowTypes: ['normal', 'popup', 'app', 'devtools'] }))
     .filter((win) => win.id !== state.lockWindowId && covers(settings, win))
     .map((win) => ({ id: win.id, left: win.left, top: win.top, width: win.width, height: win.height, fullscreen: win.state === 'fullscreen' }));
   sendHelper({ cmd: helperAnnounced() ? 'update' : 'lock', windows, reason: state.reason, touchId: settings.helperTouchId && helperBiometric() });
@@ -424,7 +430,7 @@ async function secureExposed(settings, { fresh }) {
   if (exposed.length) await minimizeWindows(settings, { full: fresh, only: exposed });
   broughtForward = null;
   // Nothing left to type the passcode into: open the small unlock window, so there is always a way back in.
-  if (!visible.length) await ensureUnlockWindow();
+  if (!visible.length && (exposed.length || settings.scope === 'profile')) await ensureUnlockWindow();   // (private-only mode with no private window has nothing to unlock)
 }
 
 async function ensureUnlockWindow() {
@@ -488,12 +494,23 @@ function openUnlockWindow() {
 
 // ---------- unlocking ----------
 
-function unlockNow({ error = '', method = 'passcode' } = {}) {
-  return serial(async () => {
+// Unlocking waits its turn in the queue. Code that is already running inside the queue (a lock pass that gave up) must call
+// unlockInner directly: waiting for its own turn from inside the queue would never end.
+const unlockNow = (options) => serial(() => unlockInner(options));
+
+let closeTimer = null;
+async function unlockInner({ error = '', method = 'passcode' } = {}) {
+  try {
     const state = await getState();
     helperBlind = false; clearTimeout(blindTimer);
     await patchState({ locked: false, reason: '', error, nativeUp: false });   // pages uncover as soon as this lands
-    if (helperUp()) { sendHelper({ cmd: 'unlock' }); setTimeout(closeHelper, 1000); }   // the helper takes its lock away, then quits
+    if (helperUp()) {
+      sendHelper({ cmd: 'unlock' });                                  // the helper takes its lock away, then quits
+      clearTimeout(closeTimer);
+      closeTimer = setTimeout(async () => {                           // (not if a new lock started in the meantime)
+        if (!(await getState()).locked) closeHelper();
+      }, 1000);
+    }
     if (state.locked) await logEvent(store, 'unlock', method);
     for (const id of state.mutedTabs) {
       try { await chrome.tabs.update(id, { muted: false }); } catch { /* tab is gone */ }
@@ -543,9 +560,11 @@ function unlockNow({ error = '', method = 'passcode' } = {}) {
         break;
       } catch { /* try the next */ }
     }
-    await patchState({ lockWindowId: null, windowStates: {}, mutedTabs: [], failures: 0, focusedBefore: null, keptOpen: [] });
     return { ok: true };
-  });
+  } finally {
+    // Whatever happened above, the bookkeeping of this lock is cleared, so a later lock never inherits it.
+    await patchState({ lockWindowId: null, windowStates: {}, mutedTabs: [], failures: 0, focusedBefore: null, keptOpen: [] }).catch(() => {});
+  }
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -718,12 +737,17 @@ const handlers = {
   openUnlockWindow: () => openUnlockWindow(),
   // For the helper test only: makes the helper act as if a passcode was typed into its lock screen. The helper ignores it
   // unless it was started with LATCH_HELPER_TEST=1, so it does nothing in normal use.
-  async helperSelfTest({ passcode, snapshot, biometric, coverage }) { return { ok: sendHelper(coverage ? { cmd: 'test-coverage', ...coverage } : biometric ? { cmd: 'test-biometric' } : snapshot ? { cmd: 'test-snapshot', path: String(snapshot) } : { cmd: 'test-submit', passcode: String(passcode ?? '') }) }; },
+  async helperSelfTest({ passcode, snapshot, biometric, coverage }) {
+    if (!(await store.get('testHooks'))) return { ok: false };      // off unless a test has switched it on
+    return { ok: sendHelper(coverage ? { cmd: 'test-coverage', ...coverage } : biometric ? { cmd: 'test-biometric' } : snapshot ? { cmd: 'test-snapshot', path: String(snapshot) } : { cmd: 'test-submit', passcode: String(passcode ?? '') }) }; },
   // Settings asks whether the helper is installed and answering.
   async probeHelper() {
     const ok = await connectHelper({ message: onHelperMessage, gone: onHelperGone }, { force: true });
     const biometric = ok && helperBiometric();
-    if (ok && !(await getState()).locked) closeHelper();          // only a check: let it quit again
+    if (ok && !(await getState()).locked) {
+      closeHelper();                                                // only a check: let it quit again
+      if ((await getState()).locked) enforceSoon();                 // a lock landed in that instant: bring the helper back
+    }
     return { ok, biometric, problem: ok ? '' : helperProblem() };
   },
   // A page cover reports that the unlock screen did not load in its page (a fixed sentence, nothing from the page).

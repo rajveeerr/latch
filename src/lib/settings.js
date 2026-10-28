@@ -53,6 +53,7 @@ export function isWeakening(prev, next) {
   if (!prev.helperTouchId && next.helperTouchId) return true;                   // a second way in
   if (prev.hideMode === 'close' && next.hideMode === 'minimize') return true;     // strict hiding is stronger
   if (prev.lockStyle !== 'overlay' && next.lockStyle === 'overlay') return true;   // the tab strip stays visible under an in-page overlay; the other two hide it
+  if (prev.lockStyle === 'window' && next.lockStyle !== 'window') return true;     // 'native' falls back to the overlay without the helper, so leaving the lock window is a loosening too
   if (prev.scope === 'profile' && next.scope === 'private') return true;     // protects less
   for (const k of MINUTES) {
     if (prev[k] === 0) continue;                  // already off, nothing to weaken

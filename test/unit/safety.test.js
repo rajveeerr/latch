@@ -62,3 +62,16 @@ test('only the permissions Latch needs are requested', () => {
 test('nothing talks to the network', () => {
   for (const [file, code] of all) assert.ok(!/\bfetch\(|XMLHttpRequest|WebSocket|sendBeacon/.test(code) && !/https?:\/\/(?!www\.w3\.org\/2000\/svg)/.test(code), `${file} may use the network`);
 });
+
+test('a lock pass that gives up unlocks directly, never by waiting in the queue it is already running in', () => {
+  const source = read('src/background.js');
+  const pass = source.slice(source.indexOf('async function enforceLocked'), source.indexOf('// Tell the helper which windows'));
+  assert.ok(pass.includes('unlockInner('), 'the safety unlock inside enforceLocked uses unlockInner');
+  assert.equal(/await unlockNow\(/.test(pass), false, 'awaiting unlockNow from inside enforceLocked would wait on itself forever');
+});
+
+test('the helper self-test hook does nothing unless a test has switched it on', () => {
+  const source = read('src/background.js');
+  const hook = source.slice(source.indexOf('async helperSelfTest'), source.indexOf('async probeHelper'));
+  assert.ok(hook.includes("store.get('testHooks')"));
+});

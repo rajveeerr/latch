@@ -13,10 +13,10 @@ if [ "${1:-}" = "--fast" ]; then
   exit 0
 fi
 TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
 swiftc $FLAGS -target arm64-apple-macos12.0 -o "$TMP/arm64" "$SRC"
 swiftc $FLAGS -target x86_64-apple-macos12.0 -o "$TMP/x86_64" "$SRC"
 mkdir -p "$HERE/bin"
 lipo -create "$TMP/arm64" "$TMP/x86_64" -output "$HERE/bin/latch-helper"
-codesign -s - --force "$HERE/bin/latch-helper" 2>/dev/null || true
-rm -rf "$TMP"
+codesign -s - --force "$HERE/bin/latch-helper"
 echo "built $HERE/bin/latch-helper (arm64 + x86_64)"

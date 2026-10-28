@@ -290,12 +290,27 @@ try {
   await options.waitForSelector('#styleNative', { state: 'attached' });
   assert.equal(await options.isChecked('#styleWindow'), true, 'the form shows the style this run pinned');
   await options.click('label.choice:has(#styleNative)');
+  await options.fill('#authPasscode', PASS); await options.press('#authPasscode', 'Enter');      // leaving the lock window is a loosening: the passcode bar asks
   await until(async () => (await styleOf()) === 'native', 'the native helper style to be saved');
   assert.equal(await options.isVisible('#helperCard'), true, 'the helper card shows when the native style is chosen');
   await options.click('label.choice:has(#styleWindow)');
   await until(async () => (await styleOf()) === 'window', 'the lock-window style to be saved');
   assert.equal(await options.isVisible('#helperCard'), false);
   ok('how it locks can be chosen (native helper, on the page, separate window), and the helper card shows only for the helper');
+
+  // Loosening how it locks needs the passcode, from the separate lock window to anything else included (the helper falls back to
+  // the in-page overlay when it is not installed).
+  const trySave = (lockStyle, passcode) => options.evaluate(async ([style, pass]) => chrome.runtime.sendMessage({ type: 'saveSettings', settings: { ...(await chrome.runtime.sendMessage({ type: 'getSettings' })).settings, lockStyle: style }, passcode: pass }), [lockStyle, passcode]);
+  assert.equal((await trySave('window', undefined)).ok, true, 'saved: the lock window itself');
+  for (const loosened of ['native', 'overlay']) {
+    const refused = await trySave(loosened, undefined);
+    assert.equal(refused.ok, false, `leaving the lock window for ${loosened} is refused without the passcode`);
+    assert.equal(refused.needPasscode, true);
+    assert.equal((await trySave(loosened, 'not the passcode')).ok, false, 'and refused with a wrong one');
+    assert.equal(await styleOf(), 'window', 'nothing changed');
+  }
+  assert.equal((await trySave('native', PASS)).ok, true, 'allowed with the passcode');
+  ok('loosening how it locks (leaving the lock window) is refused without the passcode, and allowed with it');
 
   console.log(`\nAll ${step} checks passed.`);
 } catch (err) {

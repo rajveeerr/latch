@@ -175,8 +175,6 @@ async function init() {
   if (status.scope === 'private') $('footText').textContent = 'Only your private windows are locked. Everything else stays open.';
   if (status.retryAfterMs) showWait(status.retryAfterMs);
   // A reset already retired the old recovery code, so a new one must not be lost if this window was closed too soon.
-  const { pendingRecovery } = await chrome.storage.session.get('pendingRecovery');
-  if (pendingRecovery) { $('newCode').textContent = pendingRecovery; show('viewRecovered'); }
   if (status.touchId && window.PublicKeyCredential) {
     try {
       if (await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()) $('touchId').hidden = false;
@@ -254,7 +252,6 @@ $('recoverForm').addEventListener('submit', async (event) => {
     return;
   }
   pendingPasscode = a;
-  await chrome.storage.session.set({ pendingRecovery: result.recoveryCode });
   for (const id of ['recoveryCode', 'newPass', 'newPass2']) $(id).value = '';
   error.textContent = '';
   $('newCode').textContent = result.recoveryCode;
@@ -268,7 +265,6 @@ $('copyCode').addEventListener('click', async () => {
 $('savedCode').addEventListener('change', () => { $('finish').disabled = !$('savedCode').checked; });
 $('finish').addEventListener('click', async () => {
   $('finish').disabled = true;
-  await chrome.storage.session.remove('pendingRecovery');
   const passcode = pendingPasscode;
   pendingPasscode = '';
   show('viewUnlock');

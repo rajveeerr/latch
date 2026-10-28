@@ -41,6 +41,12 @@ const helperPids = () => { try { return execFileSync('pgrep', ['-f', helper], { 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function until(fn, what, ms = 10000) { const end = Date.now() + ms; let last; while (Date.now() < end) { try { last = await fn(); if (last) return last; } catch (e) { last = e; } await sleep(100); } throw new Error(`timed out waiting for: ${what} (${last})`); }
 
+// A throwaway-profile Brave reads Chrome's real hosts folder. If a real install is there, the test would use it instead of its own
+// helper, so say so and stop before starting anything.
+if (process.env.BRAVE && existsSync(path.join(homedir(), 'Library/Application Support/Google/Chrome/NativeMessagingHosts/com.latch.helper.json'))) {
+  console.log('  (skipped: a real Latch helper is installed for Chrome and Brave on this Mac, and a throwaway Brave would use it. Run "Uninstall Latch Helper" to test in Brave.)');
+  process.exit(0);
+}
 const profile = mkdtempSync(path.join(tmpdir(), 'latch-native-'));
 let context, brave, wroteHostFile, passed = 0, failed = 0;
 async function check(name, fn) { try { await fn(); passed++; console.log(`  ✓ ${name}`); } catch (e) { failed++; console.log(`  ✗ ${name}\n      ${String(e.message || e).split('\n')[0]}`); } }
@@ -61,6 +67,7 @@ try {
   if (!admin.url().includes('options.html')) await admin.goto(`chrome-extension://${extId}/ui/options.html`);
   const send = (m) => admin.evaluate((msg) => chrome.runtime.sendMessage(msg), m);
   const W = (fn, ...args) => worker.evaluate(([f, a]) => new Function('return ' + f)()(...a), [fn.toString(), args]);
+  await W(async () => { await chrome.storage.local.set({ testHooks: true }); });         // lets the helper's self-test messages through
   assert.equal((await send({ type: 'setPasscode', passcode: PASS })).ok, true);
   assert.equal((await send({ type: 'saveSettings', settings: { autoLockMinutes: 0, lockOnStartup: false, lockOnSystemLock: false, lockStyle: 'native' }, passcode: PASS })).ok, true);
   const browserPid = brave ? brave.pid : Number(execFileSync('pgrep', ['-f', `user-data-dir=${profile}`], { encoding: 'utf8' }).trim().split('\n').filter(Boolean)[0]);
@@ -95,7 +102,7 @@ try {
   const hostFile = path.join(hosts, 'com.latch.helper.json');
   const wrong = JSON.stringify({ name: 'com.latch.helper', description: 'test', path: helper, type: 'stdio', allowed_origins: ['chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/'] });
   const realFile = existsSync(hostFile);
-  if (brave && realFile) { console.log('  (skipped: a real Latch helper is installed for Chrome and Brave on this Mac, and a throwaway Brave would use it. Run "Uninstall Latch Helper" to test in Brave.)'); process.exit(0); }
+
   if (!realFile) { writeFileSync(hostFile, wrong); wroteHostFile = hostFile; }
   if (!realFile) await check('a helper installed for a different Latch folder is recognised as that, not as missing', async () => {
     const probe = await send({ type: 'probeHelper' });
@@ -114,16 +121,17 @@ try {
     await until(() => helperPids().length === 0, 'the probe helper to quit again', 6000);
   });
 
-  let a;
+  let a, aBefore;
   await check('lock: the helper puts a lock exactly over each window; no window opens; nothing moves or minimizes', async () => {
     a = await create({ url: site('a'), left: 90, top: 90, width: 800, height: 560, state: 'normal' });
     await until(() => context.pages().find((p) => p.url().endsWith('?t=a')), 'the page', 10000); await sleep(600);
-    const before = await info(a); const popupsBefore = await popups();
+    const before = await info(a); aBefore = before; const popupsBefore = await popups();
     assert.equal((await send({ type: 'lock' })).ok, true);
     await until(flag, 'locked');
     const pid = await until(() => helperPids().at(-1), 'the helper to be running', 6000);
     const overlays = await until(() => { const o = windowsOf(pid); return o.length >= 2 ? o : null; }, 'overlays on screen', 6000);
     const browserWins = windowsOf(browserPid);
+    assert.ok(browserWins.length >= 2, 'the browser windows are on screen to be checked');
     for (const bw of browserWins) {
       assert.ok(overlays.some((o) => Math.abs(o.x - bw.x) <= 3 && Math.abs(o.y - bw.y) <= 3 && Math.abs(o.w - bw.w) <= 3 && Math.abs(o.h - bw.h) <= 3), `a lock sits exactly over the window at ${bw.x},${bw.y} ${bw.w}x${bw.h}`);
     }
@@ -171,7 +179,7 @@ try {
     const pids = helperPids();
     await until(() => helperPids().length === 0, 'the helper to quit', 8000);
     assert.ok(pids.length >= 1);
-    assert.deepEqual(await info(a), await info(a));
+    assert.deepEqual(await info(a), aBefore, 'the window is exactly as it was before the lock');
   });
 
   await check('an automatic lock (the same timer the "browser in the background" lock uses) puts the helper lock up too, and unlocking works', async () => {
@@ -181,6 +189,23 @@ try {
     const pid = await until(() => helperPids().at(-1), 'the helper to start for it', 8000);
     await until(() => { const o = windowsOf(pid); return o.length >= 1 ? o : null; }, 'the helper lock to be on screen', 8000);
     assert.ok((await events()).some((e) => e.includes('background')), 'Activity says why it locked');
+    assert.equal((await send({ type: 'helperSelfTest', passcode: PASS })).ok, true);
+    await until(async () => !(await flag()), 'unlocked', 6000);
+    await until(() => helperPids().length === 0, 'the helper to quit', 8000);
+  });
+
+  await check('locking again right after an unlock keeps the helper: its shutdown timer must not close the new lock', async () => {
+    assert.equal((await send({ type: 'lock' })).ok, true);
+    await until(flag, 'locked');
+    await until(() => helperPids().length >= 1, 'the helper', 6000);
+    assert.equal((await send({ type: 'helperSelfTest', passcode: PASS })).ok, true);
+    await until(async () => !(await flag()), 'unlocked', 6000);
+    assert.equal((await send({ type: 'lock' })).ok, true);              // straight away, inside the helper's 1 s shutdown window
+    await until(flag, 'locked again');
+    await sleep(2500);                                                  // past the old timer
+    const pid = await until(() => helperPids().at(-1), 'the helper to still be there', 4000);
+    assert.ok(windowsOf(pid).length >= 1, 'and it is still drawing the lock');
+    assert.equal(await W(async () => (await chrome.storage.local.get('state')).state.nativeUp === true), true);
     assert.equal((await send({ type: 'helperSelfTest', passcode: PASS })).ok, true);
     await until(async () => !(await flag()), 'unlocked', 6000);
     await until(() => helperPids().length === 0, 'the helper to quit', 8000);
@@ -196,14 +221,15 @@ try {
     assert.equal((await send({ type: 'lock' })).ok, true);
     await until(flag, 'locked');
     const pid = await until(() => helperPids().at(-1), 'the helper', 6000);
-    const coversAll = () => { const o = windowsOf(pid); return windowsOf(browserPid).every((bw) => o.some((x) => Math.abs(x.x - bw.x) <= 3 && Math.abs(x.y - bw.y) <= 3 && Math.abs(x.w - bw.w) <= 3 && Math.abs(x.h - bw.h) <= 3)); };
+    const coversAll = () => { const o = windowsOf(pid); const shown = windowsOf(browserPid); return shown.length > 0 && shown.every((bw) => o.some((x) => Math.abs(x.x - bw.x) <= 3 && Math.abs(x.y - bw.y) <= 3 && Math.abs(x.w - bw.w) <= 3 && Math.abs(x.h - bw.h) <= 3)); };
     await until(coversAll, 'every window, the maximized one included, to be covered exactly', 6000);
     const maxSize = windowsOf(browserPid).sort((x, y) => y.w * y.h - x.w * x.h)[0];
     assert.ok(maxSize.w >= 1000, 'the maximized window really is screen sized');
     // minimize one while locked: it leaves the screen, and the lock leaves with it; restoring it brings the lock straight back
     const countBefore = windowsOf(browserPid).length;
     await W((i) => chrome.windows.update(i, { state: 'minimized' }), n);
-    await until(() => windowsOf(browserPid).length < countBefore, 'the window to leave the screen', 6000).catch(() => {});
+    const minimized = await until(() => windowsOf(browserPid).length < countBefore, 'the window to leave the screen', 6000).then(() => true, () => false);
+    if (!minimized) console.log('      (this browser did not minimize the window under automation, so the minimize-and-restore leg was not exercised)');
     await W((i) => chrome.windows.update(i, { state: 'normal' }), n);
     await until(() => windowsOf(browserPid).length >= countBefore, 'the window to come back', 6000);
     await until(coversAll, 'the restored window to be covered again', 4000);

@@ -13,13 +13,17 @@ if [ -z "$ID" ]; then
 fi
 
 # The helper ships prebuilt (Apple Silicon and Intel). Only if it is missing is it built here, which needs the Xcode command line tools.
+chmod +x "$HERE/bin/latch-helper" 2>/dev/null || true    # a re-zipped copy can lose the executable bit
 [ -x "$HERE/bin/latch-helper" ] || sh "$HERE/build.sh"
 
 DEST="$HOME/Library/Application Support/Latch"
 mkdir -p "$DEST"
-cp "$HERE/bin/latch-helper" "$DEST/latch-helper"
-chmod 755 "$DEST/latch-helper"
-"$DEST/latch-helper" </dev/null >/dev/null 2>&1 || true   # start it once: macOS checks a new program on its first launch, so the first lock is not slow
+# Copy beside it and rename over it. Writing into the old file in place can make macOS refuse to run it afterwards, and
+# renaming leaves a helper that is running right now untouched.
+cp "$HERE/bin/latch-helper" "$DEST/latch-helper.new"
+chmod 755 "$DEST/latch-helper.new"
+mv -f "$DEST/latch-helper.new" "$DEST/latch-helper"
+"$DEST/latch-helper" </dev/null >/dev/null 2>&1 || { echo "  the helper did not start on a test run: see System Settings > Privacy & Security"; }   # start it once: macOS checks a new program on its first launch, so the first lock is not slow
 
 write_manifest() {   # $1 = the browser's NativeMessagingHosts folder
   mkdir -p "$1"
@@ -43,6 +47,9 @@ else
   for BROWSER in "BraveSoftware/Brave-Browser" "Google/Chrome" "Chromium" "Microsoft Edge"; do
     if [ -d "$SUPPORT/$BROWSER" ]; then write_manifest "$SUPPORT/$BROWSER/NativeMessagingHosts"; FOUND=1; fi
   done
-  [ "$FOUND" = 1 ] || echo "  no supported browser found in $SUPPORT"
+  if [ "$FOUND" != 1 ]; then
+    echo "  No supported browser was found (Brave, Chrome, Chromium or Edge in the standard place), so nothing was set up." >&2
+    exit 1
+  fi
 fi
 echo "Done. Latch's settings will notice the helper by themselves; there is nothing to reload."
