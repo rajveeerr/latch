@@ -161,6 +161,7 @@ function done(method) {
 }
 
 async function init() {
+  if (!preview) send({ type: 'fitLockWindow', left: screen.availLeft ?? 0, top: screen.availTop ?? 0, width: screen.availWidth, height: screen.availHeight }).catch(() => {});
   if (preview) {
     $('title').textContent = 'Lock screen preview';
     $('reason').textContent = 'Nothing is locked. Type anything and press Unlock, or type “wrong”.';

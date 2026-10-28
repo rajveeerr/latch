@@ -2,6 +2,8 @@
 
 export const DEFAULTS = Object.freeze({
   enabled: true,
+  hideMode: 'minimize',      // 'minimize' = windows go to the Dock (safe); 'close' = strict: windows are closed and reopened on unlock (macOS only)
+  lockWindow: 'fill',        // 'fill' = cover the screen; 'fullscreen' = full screen, which also hides the Dock and menu bar
   scope: 'profile',          // 'profile' = lock everything; 'private' = lock only private windows (like Safari)
   autoLockMinutes: 5,        // lock after this long with no keyboard/mouse input; 0 = never
   blurLockMinutes: 0,        // lock after the browser has been in the background this long; 0 = never
@@ -15,6 +17,8 @@ export const DEFAULTS = Object.freeze({
 });
 
 const SCOPES = ['profile', 'private'];
+const LOCK_WINDOWS = ['fill', 'fullscreen'];
+const HIDE_MODES = ['minimize', 'close'];
 const BOOLEANS = ['enabled', 'skipWhileAudio', 'lockOnStartup', 'lockOnSystemLock', 'minimizeWindows', 'coverPages', 'pauseMedia', 'muteTabs'];
 const MINUTES = ['autoLockMinutes', 'blurLockMinutes'];
 
@@ -24,6 +28,8 @@ export function normalizeSettings(input) {
   const out = { ...DEFAULTS };
   for (const k of BOOLEANS) if (typeof src[k] === 'boolean') out[k] = src[k];
   if (SCOPES.includes(src.scope)) out.scope = src.scope;
+  if (LOCK_WINDOWS.includes(src.lockWindow)) out.lockWindow = src.lockWindow;
+  if (HIDE_MODES.includes(src.hideMode)) out.hideMode = src.hideMode;
   for (const k of MINUTES) {
     const n = Number(src[k]);
     if (src[k] !== undefined && Number.isFinite(n)) {
@@ -40,6 +46,7 @@ export function isWeakening(prev, next) {
     if (prev[k] && !next[k]) return true;
   }
   if (!prev.skipWhileAudio && next.skipWhileAudio) return true;
+  if (prev.hideMode === 'close' && next.hideMode === 'minimize') return true;     // strict hiding is stronger
   if (prev.scope === 'profile' && next.scope === 'private') return true;     // protects less
   for (const k of MINUTES) {
     if (prev[k] === 0) continue;                  // already off, nothing to weaken

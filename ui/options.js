@@ -1,4 +1,6 @@
 import { mountMascot, getMascot, setMascot, getLayout, setLayout } from './mascot.js';
+import { mountAegis } from './aegis.js';
+import { mountKerby } from './kerby.js';
 import { mountScene } from './scene.js';
 import { b64u } from '../src/lib/webauthn.js';
 
@@ -81,6 +83,8 @@ function readForm() {
   for (const k of BOOLEANS) s[k] = $(k).checked;
   for (const k of NUMBERS) s[k] = Number($(k).value || 0);
   s.scope = document.querySelector('input[name="scope"]:checked')?.value || saved.scope;
+  s.lockWindow = $('lockFullscreen').checked ? 'fullscreen' : 'fill';
+  s.hideMode = $('hideStrict').checked ? 'close' : 'minimize';
   return s;
 }
 
@@ -88,6 +92,9 @@ function writeForm(s) {
   for (const k of BOOLEANS) $(k).checked = s[k];
   for (const k of NUMBERS) $(k).value = s[k] || '';       // zero reads as an empty box, not a stray "0 min"
   $(s.scope === 'private' ? 'scopePrivate' : 'scopeProfile').checked = true;
+  $('lockFullscreen').checked = s.lockWindow === 'fullscreen';
+  $('hideStrict').checked = s.hideMode === 'close';
+  $('hideStrictRow').hidden = !(status && status.mac);          // closing windows is only offered where it is safe: macOS
   syncChips();
 }
 
@@ -198,6 +205,21 @@ async function saveSettings(passcode = '') {
 
 for (const k of BOOLEANS) $(k).addEventListener('change', () => saveSettings());
 for (const radio of document.querySelectorAll('input[name="scope"]')) radio.addEventListener('change', () => saveSettings());
+$('lockFullscreen').addEventListener('change', () => saveSettings());
+$('hideStrict').addEventListener('change', async () => {
+  if (!$('hideStrict').checked) return saveSettings();
+  toast('Checking that this browser can do it safely…');
+  const probe = await send({ type: 'probeStrict' });
+  if (!probe.ok) {
+    $('hideStrict').checked = false;
+    toast(probe.reason === 'asks-first'
+      ? 'This browser asks before closing windows with several tabs, so strict hiding cannot work here. Dismiss the prompt if one appeared, or keep minimizing.'
+      : 'Strict hiding is not available in this browser.', 'error');
+    return;
+  }
+  toast('Strict mode on. Windows with unsaved typing stay open (minimized).');
+  saveSettings();
+});
 for (const k of NUMBERS) {
   // Save when the person is done typing, not on every keystroke, and never treat an empty box as zero.
   $(k).addEventListener('input', syncChips);
@@ -465,25 +487,41 @@ $('clearActivity').addEventListener('click', () => {
   });
 });
 
-// ---------- appearance: lock screen layout and mascot ----------
-const MASCOT_NOTES = { aegis: 'A little marble hoplite.', kerby: 'A three-headed guard pup.', none: 'No mascot anywhere. Just the lock.' };
+// ---------- appearance: lock screen layout and mascot, with live previews ----------
 function renderAppearance() {
   const layout = getLayout(), mascot = getMascot();
-  for (const b of document.querySelectorAll('#layoutSeg button')) b.setAttribute('aria-checked', String(b.dataset.layout === layout));
-  for (const b of document.querySelectorAll('#mascotSeg button')) b.setAttribute('aria-checked', String(b.dataset.mascot === mascot));
-  $('mascotNote').textContent = MASCOT_NOTES[mascot];
+  for (const b of document.querySelectorAll('#layoutPicker .pick')) b.setAttribute('aria-checked', String(b.dataset.layout === layout));
+  for (const b of document.querySelectorAll('#mascotPicker .pick')) b.setAttribute('aria-checked', String(b.dataset.mascot === mascot));
 }
-for (const b of document.querySelectorAll('#layoutSeg button')) {
-  b.addEventListener('click', () => { setLayout(b.dataset.layout); renderAppearance(); toast('Lock screen changed. Press Preview to see it.'); });
+
+// Each mascot card shows the real mascot, and he cheers when you point at his card.
+const previews = [];
+for (const pv of document.querySelectorAll('.mascotPv[data-preview]')) {
+  const box = document.createElement('span');
+  box.className = 'mascot-box';
+  box.style.display = 'block';
+  pv.append(box);
+  const mascot = (pv.dataset.preview === 'kerby' ? mountKerby : mountAegis)(box, { state: 'guard', track: false });
+  previews.push(mascot);
+  const card = pv.closest('.pick');
+  card.addEventListener('pointerenter', () => mascot.set('happy'));
+  card.addEventListener('pointerleave', () => mascot.set('guard'));
+  card.addEventListener('focus', () => mascot.set('happy'));
+  card.addEventListener('blur', () => mascot.set('guard'));
 }
-for (const b of document.querySelectorAll('#mascotSeg button')) {
+
+for (const b of document.querySelectorAll('#layoutPicker .pick')) {
+  b.addEventListener('click', () => { setLayout(b.dataset.layout); renderAppearance(); toast('Lock screen changed. Press Preview to see it full size.'); });
+}
+for (const b of document.querySelectorAll('#mascotPicker .pick')) {
   b.addEventListener('click', () => {
     setMascot(b.dataset.mascot);
     renderAppearance();
     aegis.destroy();                                           // swap the overview mascot right away
     aegis = mountMascot($('heroArt'), { state: 'guard' });
     $('overview').toggleAttribute('data-nomascot', aegis.id === 'none');
-    toast(b.dataset.mascot === 'none' ? 'Mascot turned off.' : `${b.textContent} is on guard.`);
+    const name = b.querySelector('b').textContent;
+    toast(b.dataset.mascot === 'none' ? 'Mascot turned off.' : `${name} is on guard.`);
   });
 }
 $('lockPreview').addEventListener('click', () => chrome.tabs.create({ url: chrome.runtime.getURL('ui/lock.html#preview') }));

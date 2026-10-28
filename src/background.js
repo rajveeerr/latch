@@ -40,6 +40,7 @@ const EMPTY_SESSION = {
   mutedTabs: [],      // tab ids we muted
   failures: 0,        // consecutive failed attempts to enforce the lock
   focusedBefore: null, // the window you were using when it locked, so unlocking can hand focus straight back
+  keptOpen: [],       // windows strict hiding left open because they hold unsaved typing or sound (logged once each)
 };
 
 const getSettings = async () => normalizeSettings(await store.get('settings'));
@@ -103,9 +104,13 @@ async function enforceLocked() {
   if (!state.locked) return;
   const settings = await getSettings();
   try {
+    // Order matters for speed and for leaks: the cover goes on every page first (instant), then the lock window rises over
+    // the screen, and only then are windows taken out of the way (the slow, animated part).
+    await ensureCovers(settings);
+    if (settings.scope === 'profile') await ensureLockWindow(settings);
+    if (settings.hideMode === 'close' && (await isMac())) await strictHide(settings);
     if (settings.minimizeWindows) await minimizeWindows(settings);
     if (settings.muteTabs) await muteAudibleTabs(settings);
-    if (settings.scope === 'profile') await ensureLockWindow();
     if (state.failures) await patchState({ failures: 0 });
   } catch (err) {
     const failures = state.failures + 1;
@@ -114,22 +119,141 @@ async function enforceLocked() {
   }
 }
 
+// Hide this profile's windows. The extension API only ever returns windows of the profile it is installed in, so
+// other profiles' windows are never seen, let alone touched.
 async function minimizeWindows(settings) {
   const state = await getState();
   const windowStates = { ...state.windowStates };
   const windows = await chrome.windows.getAll({ windowTypes: ['normal', 'app'] });
   for (const win of windows) {
     if (win.id === state.lockWindowId || !covers(settings, win)) continue;
-    // A full-screen window lives in its own macOS Space. Leaving it and re-entering it is what stranded people on
-    // the lock page, so full-screen windows are never touched: the page cover and the lock window handle them.
-    if (win.state === 'fullscreen') continue;
-    if (!(win.id in windowStates)) windowStates[win.id] = win.state;
+    if (!(win.id in windowStates)) windowStates[win.id] = win.state;      // what to put back on unlock
     if (win.state === 'minimized') continue;
     try {
+      // A full-screen window is its own macOS Space and cannot be minimized directly: step out of full screen first.
+      // Showing its tabs and page while "locked" would be a leak, so security wins over avoiding the animation.
+      if (win.state === 'fullscreen') await chrome.windows.update(win.id, { state: 'normal' });
       await chrome.windows.update(win.id, { state: 'minimized' });
-    } catch { /* window went away; nothing to do */ }
+    } catch { /* the window went away; nothing to do */ }
   }
   await patchState({ windowStates });
+}
+
+// ---------- strict hiding (opt-in, macOS only) ----------
+// Windows are closed while locked, so nothing shows in Stage Manager, Mission Control or the Dock, and reopened from the
+// browser's own recently-closed list on unlock. This is the one place Latch closes a user window, so it is fenced:
+//   * only when the lock window is already up (so the browser never ends up with no window at all)
+//   * never a window with unsaved typing or a tab playing sound: those are minimized instead
+//   * what was closed is saved to storage, so it survives the browser quitting, and unlock reports anything it cannot reopen
+const isMac = async () => (await chrome.runtime.getPlatformInfo()).os === 'mac';
+
+// True when a page holds typing that has not been saved anywhere: a changed field, or text in an editable region.
+function pageHasUnsavedTyping() {
+  const fields = document.querySelectorAll('input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]):not([type=file]),textarea');
+  for (const el of fields) if (el.value !== el.defaultValue) return true;
+  for (const el of document.querySelectorAll('[contenteditable=""],[contenteditable="true"],[contenteditable="plaintext-only"]')) if (el.textContent.trim().length) return true;
+  return false;
+}
+
+async function windowIsRisky(win) {
+  if (win.tabs.some((tab) => tab.audible)) return true;
+  const checks = await Promise.allSettled(win.tabs.filter((tab) => !tab.discarded).map((tab) =>
+    chrome.scripting.executeScript({ target: { tabId: tab.id, allFrames: true }, func: pageHasUnsavedTyping })));
+  return checks.some((result) => result.status === 'fulfilled' && result.value.some((frame) => frame.result === true));
+}
+
+async function strictHide(settings) {
+  const state = await getState();
+  if (state.lockWindowId == null) return;                                   // the lock window must exist first
+  const closed = (await store.get('strictRestore')) || [];
+  const wins = await chrome.windows.getAll({ windowTypes: ['normal', 'app'], populate: true });
+  let closedNow = 0;
+  const attempts = [];
+  // Phase 1, fast: save each window's addresses, then close it. Nothing waits on the browser here, so nothing stays on show.
+  for (const win of wins) {
+    if (win.id === state.lockWindowId || !covers(settings, win) || !win.tabs?.length) continue;
+    if (await windowIsRisky(win)) {                                          // minimized by the normal path
+      if (!(state.keptOpen || []).includes(win.id)) { await patchState({ keptOpen: [...(state.keptOpen || []), win.id] }); await logEvent(store, 'setting', 'kept a window open: unsaved typing or sound'); }
+      continue;
+    }
+    const tabs = win.tabs.map((tab) => ({ url: tab.url || tab.pendingUrl || '', pinned: tab.pinned, active: tab.active }));
+    const item = { sessionId: null, tabs, state: win.state, focused: win.id === state.focusedBefore };
+    closed.push(item);
+    await store.set('strictRestore', closed);                               // saved BEFORE closing, so a crash cannot lose the list
+    try { await chrome.windows.remove(win.id); attempts.push({ id: win.id, item }); }   // strict hiding: the only other place a user window is closed
+    catch (err) { closed.splice(closed.indexOf(item), 1); await store.set('strictRestore', closed); await logEvent(store, 'setting', `strict: could not close a window (${String(err?.message || err).slice(0, 80)})`); }
+  }
+  // Some browsers (Brave, when it is set to ask first) answer "closed" but keep a window with several tabs open. Check each one,
+  // and forget the ones that stayed: they are minimized by the normal path, and must never be "restored" as duplicates.
+  if (attempts.length) {
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    for (const { id, item } of attempts) {
+      let stillOpen = true;
+      try { await chrome.windows.get(id); } catch { stillOpen = false; }
+      if (stillOpen) { closed.splice(closed.indexOf(item), 1); await logEvent(store, 'setting', 'strict: this browser kept a window open (it asks before closing windows with several tabs)'); }
+      else closedNow++;
+    }
+    await store.set('strictRestore', closed);
+  }
+  if (!closedNow) return;
+  // Phase 2: the browser adds closed windows to its recently-closed list a moment later (some take a second or two).
+  // Match each saved window to its entry by its addresses. A window without a match is rebuilt from its addresses on unlock.
+  const urlsOf = (tabs) => tabs.map((tab) => tab.url).filter(Boolean).sort().join('\n');
+  for (let attempt = 0; attempt < 14 && closed.some((item) => !item.sessionId); attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, attempt ? 150 : 60));
+    const claimed = new Set(closed.map((item) => item.sessionId).filter(Boolean));
+    const recent = (await chrome.sessions.getRecentlyClosed({ maxResults: 25 })).filter((item) => item.window && !claimed.has(item.window.sessionId));
+    for (const item of closed.filter((entry) => !entry.sessionId)) {
+      const match = recent.find((candidate) => !claimed.has(candidate.window.sessionId) && urlsOf((candidate.window.tabs || []).map((tab) => ({ url: tab.url }))) === urlsOf(item.tabs));
+      if (match) { item.sessionId = match.window.sessionId; claimed.add(item.sessionId); }
+    }
+    await store.set('strictRestore', closed);
+  }
+}
+
+// Reopen what strict hiding closed: from the browser's own list when it has the window, otherwise rebuilt from the
+// saved addresses. Anything that cannot be reopened either way is reported with the manual way back.
+async function strictRestore() {
+  const closed = (await store.get('strictRestore')) || [];
+  if (!closed.length) return;
+  let failed = 0, rebuilt = 0, focusId = null;
+  for (const item of closed) {
+    let win = null;
+    if (item.sessionId) {
+      try { win = (await chrome.sessions.restore(item.sessionId)).window; } catch { /* fall through to the saved addresses */ }
+    }
+    if (!win) {
+      const urls = (item.tabs || []).map((tab) => tab.url).filter((url) => /^(https?|file|ftp):/.test(url));
+      if (!urls.length) { failed++; continue; }
+      try {
+        win = await chrome.windows.create({ url: urls, focused: false });
+        rebuilt++;
+        const created = await chrome.tabs.query({ windowId: win.id });
+        for (const tab of created) {
+          const wasPinned = (item.tabs || []).find((saved) => saved.url === (tab.url || tab.pendingUrl))?.pinned;
+          if (wasPinned) await chrome.tabs.update(tab.id, { pinned: true });
+        }
+      } catch { failed++; continue; }
+    }
+    if (win && item.state === 'fullscreen') { try { await chrome.windows.update(win.id, { focused: true }); await chrome.windows.update(win.id, { state: 'fullscreen' }); } catch { /* it comes back in its own state */ } }
+    if (win && item.state === 'maximized') { try { await chrome.windows.update(win.id, { state: 'maximized' }); } catch { /* ignore */ } }
+    if (win && item.focused) focusId = win.id;
+  }
+  await store.set('strictRestore', []);
+  if (focusId != null) { try { await chrome.windows.update(focusId, { focused: true }); } catch { /* gone */ } }
+  if (rebuilt) await logEvent(store, 'setting', `${rebuilt} window(s) rebuilt from their addresses (this browser did not keep them in its recently-closed list)`);
+  if (failed) {
+    await patchState({ error: `${failed} window${failed > 1 ? 's' : ''} could not be reopened automatically. Press Command+Shift+T to reopen closed windows.` });
+    await logEvent(store, 'setting', `${failed} window(s) could not be reopened: use Command+Shift+T`);
+  }
+}
+
+// Content scripts only run in pages that load after Latch is installed. Tabs that were already open, which is
+// every tab after a reload or an update, are given the cover here, then the visible tab of each window is checked.
+async function ensureCovers(settings) {
+  if (!settings.coverPages) return;
+  const tabs = (await chrome.tabs.query({})).filter((tab) => covers(settings, tab) && !tab.discarded);
+  await Promise.allSettled(tabs.map((tab) => chrome.scripting.executeScript({ target: { tabId: tab.id, allFrames: true }, files: ['src/cover.js'] })));
 }
 
 async function muteAudibleTabs(settings) {
@@ -143,21 +267,19 @@ async function muteAudibleTabs(settings) {
 }
 
 // Full-screen lock window for "everything" mode.
-async function ensureLockWindow() {
+async function ensureLockWindow(settings) {
   const state = await getState();
   if (state.lockWindowId != null) {
     try {
       const win = await chrome.windows.get(state.lockWindowId);
-      await chrome.windows.update(win.id, { state: 'maximized', focused: true });
+      await chrome.windows.update(win.id, { focused: true });
       return;
     } catch { /* it was closed; make a new one */ }
   }
-  let win;
-  try {
-    win = await chrome.windows.create({ url: LOCK_PAGE, type: 'popup', focused: true, state: 'maximized' });
-  } catch {
-    win = await chrome.windows.create({ url: LOCK_PAGE, type: 'popup', focused: true, width: 900, height: 640 });
-  }
+  // Some browsers ignore a state passed at creation, so ask again once it exists. The lock page also reports the
+  // real screen size ("fitLockWindow") as a fallback, so the lock window covers the screen on every platform.
+  let win = await chrome.windows.create({ url: LOCK_PAGE, type: 'popup', focused: true, width: 1100, height: 760 });
+  try { await chrome.windows.update(win.id, { state: settings?.lockWindow === 'fullscreen' ? 'fullscreen' : 'maximized' }); } catch { /* the fit below handles it */ }
   await patchState({ lockWindowId: win.id });
 }
 
@@ -185,20 +307,35 @@ function unlockNow({ error = '', method = 'passcode' } = {}) {
     for (const id of state.mutedTabs) {
       try { await chrome.tabs.update(id, { muted: false }); } catch { /* tab is gone */ }
     }
-    // Close our window first, then bring back only what we minimized, then give focus back to where you were.
+    // 1. Close our own window first, so nothing of ours is in the way.
     await closeLockWindow(state.lockWindowId);
+    await strictRestore();                                           // windows closed by strict hiding reopen first
+    // 2. Bring back what we hid, leaving a window alone if it is already as it should be (re-applying a state can
+    //    nudge its bounds). Full-screen windows go last, because entering full screen is the slow, animated step.
+    const entries = Object.entries(state.windowStates).map(([id, previous]) => [Number(id), previous]);
+    entries.sort((a, b) => Number(a[1] === 'fullscreen') - Number(b[1] === 'fullscreen'));
     let focusId = null;
-    for (const [id, previous] of Object.entries(state.windowStates)) {
+    for (const [id, previous] of entries) {
       try {
-        await chrome.windows.update(Number(id), { state: previous === 'minimized' ? 'minimized' : previous });
-        if (previous !== 'minimized') focusId = Number(id);
+        const current = await chrome.windows.get(id);
+        if (current.state !== previous) {
+          if (previous === 'fullscreen') {
+            if (current.state === 'minimized') await chrome.windows.update(id, { state: 'normal' });
+            await chrome.windows.update(id, { focused: true });          // it must be the active window to enter full screen
+            await chrome.windows.update(id, { state: 'fullscreen' });
+          } else {
+            await chrome.windows.update(id, { state: previous });
+          }
+        }
+        if (previous !== 'minimized') focusId = id;
       } catch { /* window is gone */ }
     }
+    // 3. Give focus back to the window you were using.
     for (const candidate of [state.focusedBefore, focusId]) {
       if (candidate == null) continue;
       try { await chrome.windows.update(candidate, { focused: true }); break; } catch { /* try the next */ }
     }
-    await patchState({ lockWindowId: null, windowStates: {}, mutedTabs: [], failures: 0, focusedBefore: null });
+    await patchState({ lockWindowId: null, windowStates: {}, mutedTabs: [], failures: 0, focusedBefore: null, keptOpen: [] });
     return { ok: true };
   });
 }
@@ -266,6 +403,9 @@ chrome.windows.onRemoved.addListener(async (windowId) => {
 });
 
 chrome.tabs.onUpdated.addListener(async (tabId, change) => {
+  if (change.status === 'complete' && (await getState()).locked) {
+    chrome.scripting.executeScript({ target: { tabId, allFrames: true }, files: ['src/cover.js'] }).catch(() => {});   // a tab that finished loading while locked
+  }
   if (change.audible && (await getState()).locked && (await getSettings()).muteTabs) serial(enforceLocked);
 });
 
@@ -325,6 +465,8 @@ async function status() {
     touchId: Boolean(credential),
     incognitoAllowed,
     extensionId: chrome.runtime.id,
+    mac: await isMac(),
+    strictPending: ((await store.get('strictRestore')) || []).length,
     failedSinceUnlock: failuresSinceUnlock(events),
     retryAfterMs: Math.max(0, (authRecord?.lockoutUntil || 0) - Date.now()),
   };
@@ -435,6 +577,33 @@ const handlers = {
     return unlockNow({ method: 'Touch ID' });
   },
 
+  // The lock page tells us the real screen, so the lock window can cover it where "maximized" is not honoured.
+  async fitLockWindow({ left, top, width, height }, sender) {
+    const state = await getState();
+    const win = sender?.tab?.windowId;
+    if (!state.locked || win == null || win !== state.lockWindowId) return { ok: false };
+    const current = await chrome.windows.get(win);
+    if (current.state === 'maximized' || current.state === 'fullscreen') return { ok: true };
+    const ok = [left, top, width, height].every((n) => Number.isFinite(n)) && width > 200 && height > 200;
+    if (ok) await chrome.windows.update(win, { left, top, width, height });
+    return { ok };
+  },
+
+  // Switching strict hiding on: can this browser really close a window with several tabs without asking?
+  async probeStrict() {
+    if (!(await isMac())) return { ok: false, reason: 'mac-only' };
+    let probe = null;
+    try {
+      probe = await chrome.windows.create({ url: ['about:blank', 'about:blank'], focused: false, width: 300, height: 200 });
+      await chrome.windows.remove(probe.id);                              // strict-hiding capability check: a throwaway blank window of ours
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      let stillOpen = true;
+      try { await chrome.windows.get(probe.id); } catch { stillOpen = false; }
+      if (stillOpen) return { ok: false, reason: 'asks-first', windowId: probe.id };
+      return { ok: true };
+    } catch { return { ok: false, reason: 'error' }; }
+  },
+
   // ----- activity and incognito -----
   getActivity: async () => ({ events: await getEvents(store) }),
 
@@ -458,6 +627,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // A page cover may ask for the unlock window, and nothing else.
   const fromCover = Boolean(sender.tab) && message.type === 'openUnlockWindow';
   if (!fromOurPage && !fromCover) return false;
-  handler(message).then(sendResponse, (err) => sendResponse({ ok: false, error: String(err?.message || err) }));
+  handler(message, sender).then(sendResponse, (err) => sendResponse({ ok: false, error: String(err?.message || err) }));
   return true;
 });

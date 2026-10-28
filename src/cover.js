@@ -2,6 +2,12 @@
 // pauses media and swallows keystrokes. It does not edit the page, the title or the
 // favicon, and removing the cover leaves everything as it was.
 (() => {
+  // Latch also injects this into tabs that were already open before it was installed or reloaded, so run once per
+  // extension lifetime. A copy left behind by a reload is dead (its chrome.runtime is gone), so a fresh one replaces it.
+  const alive = () => { try { return Boolean(chrome.runtime.id); } catch { return false; } };
+  if (window.__latchCover && window.__latchCover.alive()) return;
+  window.__latchCover = { alive };
+  for (const stranded of document.querySelectorAll('[data-latch-cover]')) stranded.remove();   // a cover the dead copy could not remove
   let settings = { coverPages: true, pauseMedia: true, scope: 'profile' };
   let locked = false;
   let host = null;
@@ -19,10 +25,11 @@
   }
 
   function mount() {
-    if (!isTop || (host && host.isConnected)) return;
+    if (!alive() || !isTop || (host && host.isConnected)) return;   // a copy left behind by an extension reload never draws
     const parent = document.documentElement;
     if (!parent) return;     // retried by the observer below
     host = document.createElement('div');
+    host.setAttribute('data-latch-cover', '');
     host.setAttribute('popover', 'manual');   // top layer: above dialogs and full-screen video
     host.style.cssText = [
       'position:fixed', 'inset:0', 'margin:0', 'padding:0', 'border:0', 'width:100vw', 'height:100vh',
@@ -99,6 +106,13 @@
     locked = Boolean(values.state && values.state.locked);
     apply();
   }
+
+  // The worker asks the top frame whether it is really covering the page, so it can tell if a window is exposed.
+  chrome.runtime.onMessage.addListener((message, sender, respond) => {
+    if (message?.type !== 'latch-ping' || !isTop) return false;
+    respond({ covered: Boolean(host && host.isConnected) });
+    return false;
+  });
 
   chrome.storage.local.get(['state', 'settings'], load);
   chrome.storage.onChanged.addListener((changes, area) => {

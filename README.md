@@ -19,7 +19,7 @@
 <p align="center">
   <a href="https://github.com/rajveeerr/latch/actions/workflows/test.yml"><img src="https://github.com/rajveeerr/latch/actions/workflows/test.yml/badge.svg" alt="tests"></a>
   <img src="https://img.shields.io/badge/download-207%20KB-2b4fdb" alt="206 KB">
-  <img src="https://img.shields.io/badge/permissions-3-2b4fdb" alt="3 permissions">
+  <img src="https://img.shields.io/badge/permissions-5-2b4fdb" alt="5 permissions">
   <img src="https://img.shields.io/badge/network-none-2b4fdb" alt="no network">
   <img src="https://img.shields.io/badge/license-MIT-14171f" alt="MIT">
 </p>
@@ -34,7 +34,7 @@ I always wanted a **native lock in Brave**, like the one Safari has for private 
 
 So I used a lock extension. It crashed my browser at random and **lost my saved and grouped tabs** more than once. That was the last straw. I built the lock I wanted: fast like a native feature, light, secure, with the good features, and it **never closes or touches a tab**.
 
-I was not alone. Brave's own tracker lists [password protection for tabs and profiles](https://github.com/brave/brave-browser/issues/42457) as P5, *"not on the official roadmap"*, and a community thread asking for [a password for the browser itself](https://community.brave.app/t/a-password-for-the-browser-itself/97057) has been running since December 2019. People wanted it for shared family PCs, guests and open desks, and they did not trust extensions that ask for many permissions. Latch asks for three.
+I was not alone. Brave's own tracker lists [password protection for tabs and profiles](https://github.com/brave/brave-browser/issues/42457) as P5, *"not on the official roadmap"*, and a community thread asking for [a password for the browser itself](https://community.brave.app/t/a-password-for-the-browser-itself/97057) has been running since December 2019. People wanted it for shared family PCs, guests and open desks, and they did not trust extensions that ask for many permissions. Latch asks for five, all explained below, and none of them reach the network.
 
 ## Who it is for
 
@@ -83,13 +83,33 @@ Measured on a MacBook with Chromium:
 | Download | **207 KB** (fonts and art included) |
 | Script on every web page | **5 KB**, which only draws a cover and reads nothing |
 | Lock screen first paint | **~70 ms** (popup ~60 ms, settings ~90 ms) |
-| Permissions | **3**: `storage`, `idle`, `alarms` |
+| Permissions | **5**: `storage`, `idle`, `alarms`, `scripting`, `sessions` (why: see below) |
 | Network, accounts, analytics | **none** |
 
 <details>
 <summary><b>How it compares</b></summary>
 
 Other lockers are worth knowing about: [Locksy](https://www.locksy.dev/) (per-tab and per-site locks), Chrome Lock Pro, [Secure Browser Lock](https://github.com/benjamindimalanta/secure-browser-lock) and Browserlock. Latch's angle is different: it never destroys state, it has a recovery path, it guides you into private windows, and it stays tiny. It does **not** (yet) do per-site locks, schedules or decoy PINs. The full notes, with sources, are in [docs/research.md](docs/research.md).
+
+</details>
+
+<details>
+<summary><b>Why each permission</b></summary>
+
+- `storage`: your settings and the hashed passcode, on this computer.
+- `idle`: knowing when you have been away, or the screen locked.
+- `alarms`: the timer for "locks after the browser has been in the background".
+- `scripting` and all sites: puts the lock cover into tabs that were already open (a page script only loads in pages opened after an extension is installed). This is why the browser says Latch can "read and change data on all sites". It reads nothing and sends nothing.
+- `sessions`: only for the optional strict mode, to reopen windows it closed.
+
+</details>
+
+<details>
+<summary><b>How windows are hidden, and strict mode</b></summary>
+
+When locked, every tab gets a cover, a lock window rises over the screen, and this profile's windows are minimized (a full-screen window steps out of full screen first). On unlock the lock window closes first, normal windows return, full-screen windows re-enter full screen last, and focus goes back to the window you were using. Latch only ever sees and touches the profile it is installed in.
+
+**Stage Manager and Mission Control** can show live thumbnails of windows that are not minimized. For a stricter result, macOS has an opt-in **Hide windows completely** switch: windows are closed while locked and reopened on unlock, so nothing shows anywhere. It never closes a window with unsaved typing or sound, saves what it closed before closing it, and reports anything it cannot reopen. It is riskier for your tabs than the default, which is why it is off. **Brave currently refuses it**, because Brave asks before closing windows with several tabs, so it keeps them open. Latch checks this when you switch it on. More on the options that were weighed: [docs/approaches.md](docs/approaches.md). What to test by hand: [docs/manual-tests.md](docs/manual-tests.md).
 
 </details>
 
@@ -118,7 +138,7 @@ npm run zip                  # dist/latch-<version>.zip
 node scripts/make-icons-sprite.mjs   # icons from Lucide
 ```
 
-The safety test fails the build if any code closes, reloads, discards or navigates a tab, closes a window other than its own lock window, asks for more permissions or touches the network. Aegis, the painted scene, the engraved poster and the combination lock are drawn in code (`ui/aegis.js`, `ui/scene.js`, `ui/poster.js`, `ui/lockdial.js`).
+The safety test fails the build if any code closes, reloads, discards or navigates a tab, closes a window other than its own lock window, asks for more permissions or touches the network. Window behaviour is covered by `npm run test:windows` (16 cases across normal, maximized, half-screen, full screen, minimized, several windows, tabs and windows opened or closed while locked), `npm run test:profiles` (Latch never touches another profile) and `npm run test:autolock`. Aegis, the painted scene, the engraved poster and the combination lock are drawn in code (`ui/aegis.js`, `ui/scene.js`, `ui/poster.js`, `ui/lockdial.js`).
 
 </details>
 

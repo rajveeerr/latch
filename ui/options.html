@@ -169,8 +169,10 @@
             <h2 id="whileTitle">While locked</h2>
             <div class="card list">
               <label class="row"><span class="rowIcon"><svg class="i"><use href="icons.svg#layers"/></svg></span><span class="grow"><span class="title">Cover every page</span><span class="muted small block">An opaque lock screen over each page, above dialogs and full-screen video.</span></span><input class="switch" role="switch" type="checkbox" id="coverPages"></label>
+              <label class="row" id="hideStrictRow" hidden><span class="rowIcon"><svg class="i"><use href="icons.svg#eye-off"/></svg></span><span class="grow"><span class="title">Hide windows completely <span class="beta">Strict</span></span><span class="muted small block">Closes your windows while locked, so nothing shows in Stage Manager, Mission Control or the Dock, and reopens them when you unlock. Windows with unsaved typing or playing sound are minimized instead. Riskier for your tabs than the default.</span></span><input class="switch" role="switch" type="checkbox" id="hideStrict"></label>
               <label class="row"><span class="rowIcon"><svg class="i"><use href="icons.svg#window"/></svg></span><span class="grow"><span class="title">Minimize windows</span><span class="muted small block">Brought back as they were when you unlock. Needs the browser to allow minimizing.</span></span><input class="switch" role="switch" type="checkbox" id="minimizeWindows"></label>
               <label class="row"><span class="rowIcon"><svg class="i"><use href="icons.svg#pause"/></svg></span><span class="grow"><span class="title">Pause video and audio</span><span class="muted small block">Stops anything playing on the covered pages.</span></span><input class="switch" role="switch" type="checkbox" id="pauseMedia"></label>
+              <label class="row"><span class="rowIcon"><svg class="i"><use href="icons.svg#display"/></svg></span><span class="grow"><span class="title">Lock window in full screen</span><span class="muted small block">Also hides the Dock and menu bar while locked. Off still covers the whole screen.</span></span><input class="switch" role="switch" type="checkbox" id="lockFullscreen"></label>
               <label class="row"><span class="rowIcon"><svg class="i"><use href="icons.svg#speaker-off"/></svg></span><span class="grow"><span class="title">Mute tabs that make sound</span><span class="muted small block">Unmuted when you unlock.</span></span><input class="switch" role="switch" type="checkbox" id="muteTabs"></label>
             </div>
             <p class="reassure small muted"><svg class="i"><use href="icons.svg#shield-check"/></svg> Latch never closes, reloads or edits your tabs, tab groups or windows.</p>
@@ -178,28 +180,20 @@
 
           <section id="appearance" class="group" aria-labelledby="appearanceTitle">
             <h2 id="appearanceTitle">Appearance</h2>
-            <div class="card list">
-              <div class="row stack">
-                <div class="rowHead"><span class="rowIcon"><svg class="i"><use href="icons.svg#lock"/></svg></span>
-                  <div><span class="title" id="layoutLabel">Lock screen</span><p class="muted small">How the lock screen looks when you come back to it.</p></div></div>
-                <div class="rowCtl">
-                  <div class="seg" id="layoutSeg" role="radiogroup" aria-labelledby="layoutLabel">
-                    <button type="button" role="radio" data-layout="device" aria-checked="true">Combination lock</button>
-                    <button type="button" role="radio" data-layout="card" aria-checked="false">Trading card</button>
-                  </div>
-                  <button class="btn" id="lockPreview" type="button">Preview</button>
+            <div class="card pad pickers">
+              <div class="pickGroup">
+                <div class="pickHead"><span class="title" id="layoutLabel">Lock screen</span><button class="btn" id="lockPreview" type="button">Preview full screen</button></div>
+                <div class="picker two" id="layoutPicker" role="radiogroup" aria-labelledby="layoutLabel">
+                  <button type="button" class="pick" role="radio" data-layout="device" aria-checked="true"><span class="pv shot"><img src="art/layout-device.webp" alt="" width="320" height="200" loading="lazy"></span><b>Combination lock</b><span class="muted small">A tactile device. The dial turns as you type.</span></button>
+                  <button type="button" class="pick" role="radio" data-layout="card" aria-checked="false"><span class="pv shot"><img src="art/layout-card.webp" alt="" width="320" height="200" loading="lazy"></span><b>Trading card</b><span class="muted small">Your mascot on a painted card that reacts to you.</span></button>
                 </div>
               </div>
-              <div class="row stack">
-                <div class="rowHead"><span class="rowIcon"><svg class="i"><use href="icons.svg#paw"/></svg></span>
-                  <div><span class="title" id="mascotLabel">Mascot</span><p class="muted small">Shown while you set up, in the toolbar, on the overview and on the trading card.</p></div></div>
-                <div class="rowCtl">
-                  <div class="seg" id="mascotSeg" role="radiogroup" aria-labelledby="mascotLabel">
-                    <button type="button" role="radio" data-mascot="aegis" aria-checked="true">Aegis</button>
-                    <button type="button" role="radio" data-mascot="kerby" aria-checked="false">Kerby</button>
-                    <button type="button" role="radio" data-mascot="none" aria-checked="false">None</button>
-                  </div>
-                  <span class="muted small" id="mascotNote">A little marble hoplite.</span>
+              <div class="pickGroup">
+                <div class="pickHead"><span class="title" id="mascotLabel">Mascot</span><span class="muted small">Shown while you set up, in the toolbar, on the overview and on the trading card.</span></div>
+                <div class="picker three" id="mascotPicker" role="radiogroup" aria-labelledby="mascotLabel">
+                  <button type="button" class="pick" role="radio" data-mascot="aegis" aria-checked="true"><span class="pv mascotPv" data-preview="aegis"></span><b>Aegis</b><span class="muted small">A little marble hoplite. Raises his shield while you type.</span></button>
+                  <button type="button" class="pick" role="radio" data-mascot="kerby" aria-checked="false"><span class="pv mascotPv" data-preview="kerby"></span><b>Kerby</b><span class="muted small">A three-headed guard pup. Closes his eyes while you type.</span></button>
+                  <button type="button" class="pick" role="radio" data-mascot="none" aria-checked="false"><span class="pv mascotPv none"><img src="../icons/icon-128.png" alt="" width="64" height="64"></span><b>None</b><span class="muted small">Just the lock. No character anywhere.</span></button>
                 </div>
               </div>
             </div>

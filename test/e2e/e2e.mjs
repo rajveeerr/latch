@@ -82,7 +82,7 @@ try {
   const page = await context.newPage();
   await page.goto(site);
   await page.fill('#draft', 'unsaved draft text');
-  await until(() => page.evaluate(() => !document.getElementById('a').paused), 'audio to start playing');
+  await until(() => page.evaluate(async () => { const a = document.getElementById('a'); if (a.paused) await a.play().catch(() => {}); return !a.paused; }), 'audio to start playing', 15000);
   const tabsBefore = context.pages().map((p) => p.url()).filter((u) => !u.includes('lock.html')).sort();
   ok('sample page is playing audio with a half-typed draft');
 
@@ -251,10 +251,11 @@ try {
 
   // ---------- appearance: the lock screen layout and the mascot are real choices ----------
   await settings2.reload();
-  await settings2.click('#layoutSeg button[data-layout="card"]');
-  await settings2.click('#mascotSeg button[data-mascot="kerby"]');
+  await settings2.click('#layoutPicker .pick[data-layout="card"]');
+  await settings2.click('#mascotPicker .pick[data-mascot="kerby"]');
   await settings2.waitForSelector('#heroArt svg.kerby');
-  assert.equal(await settings2.getAttribute('#mascotSeg button[data-mascot="kerby"]', 'aria-checked'), 'true');
+  assert.equal(await settings2.getAttribute('#mascotPicker .pick[data-mascot="kerby"]', 'aria-checked'), 'true');
+  assert.equal(await settings2.locator('#mascotPicker .pick svg').count(), 2, 'each mascot card shows a live preview of that mascot');
   await options.evaluate(() => chrome.runtime.sendMessage({ type: 'lock' }));
   const lockC = await until(lockPage, 'lock window in the card layout');
   await lockC.waitForSelector('#cardVisual', { state: 'visible' });
@@ -266,7 +267,7 @@ try {
   await lockC.fill('#passcode', PASS);
   await lockC.click('#unlock');
   await until(() => !lockPage(), 'unlock from the card layout');
-  await settings2.click('#mascotSeg button[data-mascot="none"]');
+  await settings2.click('#mascotPicker .pick[data-mascot="none"]');
   await settings2.waitForFunction(() => document.getElementById('overview').hasAttribute('data-nomascot'));
   await options.evaluate(() => chrome.runtime.sendMessage({ type: 'lock' }));
   const lockN = await until(lockPage, 'lock window with no mascot');
@@ -276,8 +277,8 @@ try {
   await lockN.fill('#passcode', PASS);
   await lockN.click('#unlock');
   await until(() => !lockPage(), 'unlock with no mascot');
-  await settings2.click('#layoutSeg button[data-layout="device"]');
-  await settings2.click('#mascotSeg button[data-mascot="aegis"]');
+  await settings2.click('#layoutPicker .pick[data-layout="device"]');
+  await settings2.click('#mascotPicker .pick[data-mascot="aegis"]');
   ok('lock-screen layout and mascot can be chosen (Kerby, Aegis or none), and the lock screen follows the choice');
 
   console.log(`\nAll ${step} checks passed.`);

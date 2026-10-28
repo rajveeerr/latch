@@ -19,11 +19,21 @@
     "service_worker": "src/background.js",
     "type": "module"
   },
-  "permissions": ["storage", "idle", "alarms"],
+  "permissions": [
+    "storage",
+    "idle",
+    "alarms",
+    "scripting",
+    "sessions"
+  ],
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["src/cover.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "src/cover.js"
+      ],
       "run_at": "document_start",
       "all_frames": true,
       "match_about_blank": true
@@ -31,8 +41,14 @@
   ],
   "commands": {
     "lock-now": {
-      "suggested_key": { "default": "Ctrl+Shift+L", "mac": "MacCtrl+Shift+L" },
+      "suggested_key": {
+        "default": "Ctrl+Shift+L",
+        "mac": "MacCtrl+Shift+L"
+      },
       "description": "Lock this profile now"
     }
-  }
+  },
+  "host_permissions": [
+    "<all_urls>"
+  ]
 }

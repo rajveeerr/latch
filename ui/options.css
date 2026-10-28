@@ -174,3 +174,26 @@ body[data-ob]::before { opacity: 1; }
 .hero[data-nomascot] { grid-template-columns: 1fr; }
 .obHero [data-mascot="none"] { display: none; }
 .heroArt[data-mascot="kerby"] { margin-bottom: -10px; }
+
+/* ---------- appearance pickers: preview cards ---------- */
+.pickers { gap: 26px; }
+.pickGroup { display: grid; gap: 12px; }
+.pickHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.picker { display: grid; gap: 12px; }
+.picker.two { grid-template-columns: repeat(2, 1fr); } .picker.three { grid-template-columns: repeat(3, 1fr); }
+.pick { position: relative; display: grid; gap: 4px; align-content: start; text-align: left; padding: 10px 10px 12px; border: 0; border-radius: 14px; cursor: pointer; font: inherit; color: var(--text);
+  background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-strong); transition: box-shadow .15s, background-color .15s, transform .15s var(--ease); }
+.pick:hover { background: var(--surface-2); }
+.pick:active { transform: scale(.99); }
+.pick b { font: 600 14.5px/1.3 var(--display); letter-spacing: -.01em; margin-top: 6px; }
+.pick .pv { display: block; border-radius: 10px; overflow: hidden; background: var(--seg-bg); }
+.pick .pv.shot img { display: block; width: 100%; height: auto; }
+.pick .mascotPv { height: 132px; display: grid; place-items: end center; background: linear-gradient(180deg, #243d8c, #131f4d); position: relative; }
+.pick .mascotPv .mascot-box { width: 112px; margin-bottom: -6px; }
+.pick .mascotPv[data-preview="kerby"] .mascot-box { width: 120px; margin-bottom: -4px; }
+.pick .mascotPv.none { place-items: center; background: var(--seg-bg); }
+.pick .mascotPv.none img { border-radius: 14px; box-shadow: 0 4px 10px rgba(20, 30, 90, .25); }
+.pick[aria-checked="true"] { background: var(--accent-soft); box-shadow: inset 0 0 0 2px var(--accent); }
+.pick[aria-checked="true"]::after { content: ""; position: absolute; top: 18px; right: 18px; width: 20px; height: 20px; border-radius: 50%; background: var(--accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 12.5 4 4 8-9'/%3E%3C/svg%3E") center/12px no-repeat; box-shadow: 0 1px 3px rgba(0, 0, 0, .3); }
+.pick:focus-visible { outline: 2px solid var(--surface); box-shadow: 0 0 0 4px var(--accent); }
+@media (max-width: 640px) { .picker.three { grid-template-columns: 1fr; } .picker.two { grid-template-columns: 1fr; } .pick .mascotPv { height: 120px; } }

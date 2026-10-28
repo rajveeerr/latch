@@ -5,6 +5,8 @@ import http from 'node:http';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { existsSync, unlinkSync } from 'node:fs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const out = (name) => path.join(root, 'docs/screenshots', name);
@@ -131,6 +133,7 @@ try {
     await lock.waitForFunction(() => document.getElementById('reason').textContent.includes('inactivity'));
     await lock.waitForTimeout(400);
     await shot(lock, scheme === 'light' ? 'lock-light.png' : 'lock-dark.png');
+    if (scheme === 'light') await lock.screenshot({ path: path.join(root, 'ui/art/layout-device.png'), clip: { x: 280, y: 100, width: 880, height: 550 } });
     if (scheme === 'light') {
       await lock.fill('#passcode', 'not it');
       await lock.waitForTimeout(500);
@@ -153,9 +156,13 @@ try {
     await lock.waitForFunction(() => document.getElementById('reason').textContent.includes('inactivity'));
     await lock.waitForTimeout(500);
     await shot(lock, `lock-card-${mascot}-${scheme}.png`);
+    if (mascot === 'aegis') await lock.screenshot({ path: path.join(root, 'ui/art/layout-card.png'), clip: { x: 280, y: 60, width: 880, height: 550 } });
     await lock.close();
   }
   await worker.evaluate(() => chrome.storage.local.set({ state: { locked: false } }));
+  const reset = await open('ui/options.html', { width: 1120, height: 900 });
+  await reset.evaluate(() => { localStorage.removeItem('lockLayout'); localStorage.removeItem('mascot'); });
+  await reset.close();
   const appearance = await open('ui/options.html', { width: 1120, height: 900 });
   await appearance.waitForFunction(() => document.getElementById('statusTitle').textContent.includes('Protecting'));
   await appearance.locator('#appearance').scrollIntoViewIfNeeded();
@@ -176,6 +183,13 @@ try {
   await warnPopup.waitForFunction(() => document.getElementById('status').textContent.includes('can’t be locked'));
   await shot(warnPopup, 'popup-private-warning.png', { fullPage: true });
   await warnPopup.close();
+  // The two layout thumbnails shown in Settings are baked to small WebP files (about 10 KB each).
+  for (const name of ['layout-device', 'layout-card']) {
+    const png = path.join(root, `ui/art/${name}.png`);
+    if (!existsSync(png)) continue;
+    try { execFileSync('cwebp', ['-q', '80', '-resize', '320', '200', png, '-o', path.join(root, `ui/art/${name}.webp`)], { stdio: 'ignore' }); unlinkSync(png); }
+    catch { console.log(`cwebp not found: left ${name}.png; convert it to .webp by hand`); }
+  }
   console.log('screenshots written to docs/screenshots');
 } finally {
   await context.close();
