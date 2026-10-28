@@ -178,12 +178,19 @@ final class LockPanel: NSView {
 
     func setTouch(_ on: Bool) { touchOn = on; touch.isHidden = !on; if !on { touch.isHidden = true } }
 
-    // A small tile (a window shrunk into the Stage Manager strip) has room only for the lock.
+    // What this lock window shows depends on its shape:
+    //   a full lock screen when there is room;
+    //   just a padlock on a small tile (a whole window shrunk into the Stage Manager strip);
+    //   nothing on a wide, thin strip (the toolbar or tab strip of a full-screen window), which is only a covering,
+    //   so that the lock screen is not repeated along the top of the screen.
     override func layout() {
         super.layout()
-        let compact = bounds.width < 420 || bounds.height < 300
+        let tile = bounds.width < 420
+        let strip = !tile && bounds.height < 300
+        let compact = tile || strip
         for view in stack.arrangedSubviews where view !== icon { view.isHidden = compact || (view === touch && !touchOn) }
-        icon.symbolConfiguration = .init(pointSize: compact ? 26 : 34, weight: .regular)
+        icon.isHidden = strip
+        icon.symbolConfiguration = .init(pointSize: tile ? 26 : 34, weight: .regular)
     }
 
     func setBusy(_ busy: Bool) { field.isEnabled = !busy; button.isEnabled = !busy }
