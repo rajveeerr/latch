@@ -45,8 +45,10 @@ try {
   const windowOf = async (targetId) => (await cdp.send('Browser.getWindowForTarget', { targetId })).bounds;
   const before = await windowOf(targets[0].targetId);
 
+  // The browser gives an extension only its own profile's windows: none of the other profile's tabs may appear here.
+  const sees = await worker.evaluate(async () => (await chrome.windows.getAll({ populate: true })).some((w) => w.tabs.some((t) => (t.url || '').includes('other-profile'))));
+  assert.equal(sees, false, "Latch cannot see the other profile's window at all");
   const seen = await worker.evaluate(async () => (await chrome.windows.getAll({ windowTypes: ['normal', 'popup', 'app'] })).length);
-  const mine = (await cdp.send('Target.getTargets')).targetInfos.filter((t) => t.type === 'page' && !t.url.includes('other-profile') && !t.url.startsWith('chrome-extension://') && !t.url.startsWith('devtools')).length;
   console.log(`  windows Latch can see: ${seen}`);
 
   // a window with unsaved typing is never closed by strict mode, so the control page lives there
@@ -57,6 +59,7 @@ try {
   await worker.evaluate(async (url) => { const [w] = (await chrome.windows.getAll({ populate: true })).filter((x) => x.tabs.some((t) => t.url?.includes('keeper'))); await chrome.tabs.create({ windowId: w.id, url, active: false }); }, `chrome-extension://${id}/ui/options.html`);
   await sleep(1200);
   admin = context.pages().filter((p) => p.url().includes('options.html')).at(-1);
+  let ran = 0;
   for (const [mode, style] of [['minimize', 'window'], ['close', 'window'], ['minimize', 'overlay']]) {
     const label = style === 'overlay' ? 'overlay' : mode;
     assert.equal((await send({ type: 'saveSettings', settings: { hideMode: mode, lockStyle: style }, passcode: PASS })).ok, true);
@@ -71,9 +74,10 @@ try {
     if (style === 'window') assert.ok(lockWins >= 1, 'the lock window is up');
     assert.equal((await send({ type: 'unlock', passcode: PASS })).ok, true);
     await sleep(2500);
+    ran++;
     console.log(`  ✓ ${label}: Latch locked its own profile and left the other profile's window completely alone`);
   }
-  console.log('\n3 passed, 0 failed.');
+  console.log(`\n${ran} passed, 0 failed.`);
 } catch (err) {
   failed = true;
   console.error('\nFAILED:', err.message || err);

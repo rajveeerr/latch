@@ -95,7 +95,7 @@ try {
     return wid;
   };
   const info = (wid) => W(async (i) => { try { const w = await chrome.windows.get(i); return { state: w.state, left: w.left, top: w.top, width: w.width, height: w.height }; } catch { return null; } }, wid);
-  const popups = () => W(async () => (await chrome.windows.getAll({ windowTypes: ['popup'] })).filter((w) => w.tabs !== undefined || true).length);
+  const popups = () => W(async () => (await chrome.windows.getAll({ windowTypes: ['popup'] })).length);
   const focus = (wid) => W((i) => chrome.windows.update(i, { focused: true }), wid);
   const focused = () => W(async () => (await chrome.windows.getLastFocused()).id);
   const pageFor = (name) => context.pages().find((p) => p.url().endsWith(`?t=${name}`));
@@ -242,6 +242,8 @@ try {
     await until(() => pageFor('mini'), 'page'); await sleep(400);
     await W((i) => chrome.windows.update(i, { state: 'minimized' }), w); await sleep(400);
     const before = (await info(w)).state;
+    // Some automated browsers ignore the minimize request; then there is nothing to keep minimized and the check says so.
+    if (before !== 'minimized' && !process.env.BRAVE) console.log('      (this browser did not minimize the window under automation: only "unchanged" is checked)');
     await lock(); await unlock();
     assert.equal((await info(w)).state, before, 'a window you minimized is not popped back open');
     await closeWin(w);
@@ -544,7 +546,7 @@ try {
     const strictWorks = (await send({ type: 'probeStrict' })).ok;
     console.log(`  (hiding windows completely: ${strictWorks ? 'this browser can do it' : 'refused by the browser check'})`);
     const tallUrl = (name) => `${site(name).split('?')[0]}tall.html?t=${name}`;
-    const setMode = (mode) => send({ type: 'saveSettings', settings: { hideMode: mode, lockStyle: 'window' }, passcode: PASS });
+    const setMode = (mode) => send({ type: 'saveSettings', settings: { hideMode: mode, lockStyle: 'window', autoLockMinutes: 0, lockOnStartup: false, lockOnSystemLock: false }, passcode: PASS });
 
     if (strictWorks) await scenario('complete hiding: windows vanish while locked and come back exactly (size, tab order, pinned, group, active tab, scroll)', async () => {
       assert.equal((await setMode('close')).ok, true);

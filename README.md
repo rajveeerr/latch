@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>Lock Brave like Safari locks private windows.</b><br>
-  A tiny passcode and Touch ID lock that covers your browser when you step away,<br>and never closes or changes a single tab.
+  A tiny passcode and Touch ID lock that covers your browser when you step away,<br>and never closes or changes a tab on its own.
 </p>
 
 <p align="center">
@@ -34,7 +34,7 @@ I always wanted a **native lock in Brave**, like the one Safari has for private 
 
 So I used a lock extension. It crashed my browser at random and **lost my saved and grouped tabs** more than once. That was the last straw. I built the lock I wanted: fast like a native feature, light, secure, with the good features, and it **never closes or touches a tab**.
 
-I was not alone. Brave's own tracker lists [password protection for tabs and profiles](https://github.com/brave/brave-browser/issues/42457) as P5, *"not on the official roadmap"*, and a community thread asking for [a password for the browser itself](https://community.brave.app/t/a-password-for-the-browser-itself/97057) has been running since December 2019. People wanted it for shared family PCs, guests and open desks, and they did not trust extensions that ask for many permissions. Latch asks for five, all explained below, and none of them reach the network.
+I was not alone. Brave's own tracker lists [password protection for tabs and profiles](https://github.com/brave/brave-browser/issues/42457) as P5, *"not on the official roadmap"*, and a community thread asking for [a password for the browser itself](https://community.brave.app/t/a-password-for-the-browser-itself/97057) has been running since December 2019. People wanted it for shared family PCs, guests and open desks, and they did not trust extensions that ask for many permissions. Latch asks for six permissions, all explained below, and none of them reach the network.
 
 ## Who it is for
 
@@ -49,7 +49,7 @@ I was not alone. Brave's own tracker lists [password protection for tabs and pro
 | **Passcode lock** that covers every page, pauses media and mutes tabs | **Touch ID** (beta) through WebAuthn, with your passcode always as backup |
 | **Private windows only** mode, like Safari, so the rest of the browser stays open | **Auto-lock** after inactivity, in the background, on sleep or at startup |
 | **Recovery code**, so a forgotten passcode never means removing the extension | **Activity log** of locks, unlocks and wrong guesses, on your computer only |
-| **Aegis**, a three-headed guard pup who closes his eyes while you type and growls at a wrong guess | **Make it yours**: pick the lock screen (a combination lock or a trading card) and the mascot (Aegis, Kerby, or none) | **A lock screen that feels physical**: a brass combination lock whose dial turns as you type, whose lamp flashes red on a wrong guess, and whose shackle lifts when it opens | **Light and dark** that follow your system, in a calm native-feeling interface |
+| **Kerby**, a three-headed marble guard pup (and **Aegis**, a hoplite) who closes his eyes while you type and growls at a wrong guess | **Make it yours**: pick the lock screen (a combination lock or a trading card) and the mascot (Aegis, Kerby, or none) | **A lock screen that feels physical**: a brass combination lock whose dial turns as you type, whose lamp flashes red on a wrong guess, and whose shackle lifts when it opens | **Light and dark** that follow your system, in a calm native-feeling interface |
 
 <p align="center">
   <img src="docs/screenshots/onboarding-welcome.png" alt="Onboarding with Aegis" width="300">
@@ -118,7 +118,7 @@ Other lockers are worth knowing about: [Locksy](https://www.locksy.dev/) (per-ta
 
 The **tab strip and address bar stay visible** under the page cover, which a page cannot draw over (the helper does not have this limit). If you have no helper and that matters more to you than staying put, choose **Separate lock window** in settings: a lock window rises over the screen and this profile's windows are minimized (a full-screen window steps out of full screen first). On unlock the lock window closes first, normal windows return, full-screen windows re-enter full screen last, and focus goes back to the window you were using. Latch only ever sees and touches the profile it is installed in.
 
-**Stage Manager and Mission Control** can show live thumbnails of windows that are not minimized. With the overlay, a thumbnail is a picture of the covered window, so it shows the lock screen and the tab strip, not your page (not yet checked on a real Stage Manager strip). Measured in Brave 156 with Stage Manager on: some windows stayed in the side strip as small thumbnails while locked, even after being asked to minimize again. Their pages show the lock cover, but the tab strip is still part of the picture. Setting **Lock window: full screen** puts the lock in its own Space, which is the best an extension can do (not yet confirmed to hide the strip). For a stricter result, macOS has an opt-in **Hide windows completely** switch: windows are closed while locked and reopened on unlock, so nothing shows anywhere. It never closes a window with unsaved typing or sound, saves what it closed before closing it, and reports anything it cannot reopen. It is riskier for your tabs than the default, which is why it is off. **Brave currently refuses it**: closing windows from an extension asks for confirmation on multi-tab windows and, in testing, crashed Brave 155 when repeated. Latch checks this when you switch it on. More on the options that were weighed: [docs/approaches.md](docs/approaches.md). What to test by hand: [docs/manual-tests.md](docs/manual-tests.md).
+**Stage Manager and Mission Control** can show live thumbnails of windows that are not minimized. With the overlay, a thumbnail is a picture of the covered window, so it shows the lock screen and the tab strip, not your page (not yet checked on a real Stage Manager strip). Measured in Brave 156 with Stage Manager on: some windows stayed in the side strip as small thumbnails while locked, even after being asked to minimize again. Their pages show the lock cover, but the tab strip is still part of the picture. Setting **Lock window: full screen** puts the lock in its own Space, which is the best an extension can do (not yet confirmed to hide the strip). For a stricter result, macOS has an opt-in **Hide windows completely** switch (only with the *Separate lock window* style): windows are closed while locked and reopened on unlock, so nothing shows anywhere. It never closes a window with unsaved typing or sound, saves what it closed before closing it, and reports anything it cannot reopen. It is riskier for your tabs than the default, which is why it is off. **Brave currently refuses it**: closing windows from an extension asks for confirmation on multi-tab windows and, in testing, crashed Brave 155 when repeated. Latch checks this when you switch it on. More on the options that were weighed: [docs/approaches.md](docs/approaches.md). What to test by hand: [docs/manual-tests.md](docs/manual-tests.md).
 
 </details>
 
@@ -129,10 +129,12 @@ Latch is a **privacy lock for a browser you leave on a desk**, not a security bo
 
 - **The install prompt will say Latch can read and change data on all sites.** That is how any extension covers pages: a 5 KB script runs on every page to draw the cover. It reads nothing and sends nothing, and the code is right here to check.
 - It stops a casual passer-by, not someone with time, skill or a terminal. A browser extension cannot hide the tab strip, so the default overlay leaves tab titles and the address bar visible; the lock-window style hides more but moves windows.
-- **Private windows only** mode is lighter protection: no lock window in front, just the page cover, which DevTools can remove.
+- **The page cover can be removed with DevTools.** In *On the page* style, in *Private windows only* mode, and in the helper style when the helper is not installed, the lock is a cover drawn in the page. The helper's lock is a separate program's window and DevTools cannot touch it.
+- **The helper covers windows by their position and size, not by profile.** A browser tells a program which windows exist but not which profile each belongs to, so with two profiles open at exactly the same place and size, a lock can also cover the other profile's window. Picture-in-Picture and other floating windows are not covered, and Stage Manager's and Mission Control's thumbnails are drawn by macOS from the real windows (the helper does cover Stage Manager's side-strip tiles).
+- **The helper is not signed by Apple.** Built here it runs without a prompt. A copy that arrives in a download can be blocked on first open: right-click and choose Open once. A signed and notarized build would remove that, and is not done yet.
 - Anyone who can reach `brave://extensions` can remove Latch. Use your computer's own lock and a sign-in password too.
 - The passcode hash lives in the profile folder. Use a long passphrase, not four digits.
-- **Touch ID is beta.** The WebAuthn logic is tested with a virtual authenticator in Chromium and Brave, not yet on real Touch ID hardware in Brave.
+- **Touch ID is beta.** The browser's own Touch ID (WebAuthn) is tested with a virtual authenticator, not yet on real hardware in Brave. The helper's Touch ID uses macOS's own sheet; the tests simulate the fingerprint being accepted, and a real finger has not been tried by anyone but you.
 
 </details>
 
@@ -141,13 +143,14 @@ Latch is a **privacy lock for a browser you leave on a desk**, not a security bo
 
 ```sh
 npm install                  # only for the tests and the art scripts
-npm test                     # 41 unit tests: passcode, recovery, WebAuthn, settings, safety rules
-BRAVE=1 npm run test:e2e     # 19 end-to-end checks in real Brave with a throwaway profile
+npm test                     # 47 unit tests: passcode, recovery, WebAuthn, settings, safety rules
+BRAVE=1 npm run test:e2e     # 21 end-to-end checks in real Brave with a throwaway profile
+npm run test:native          # the Mac helper end to end: a real helper started by a real browser (macOS)
 npm run zip                  # dist/latch-<version>.zip
 node scripts/make-icons-sprite.mjs   # icons from Lucide
 ```
 
-The safety test fails the build if any code closes, reloads, discards or navigates a tab, closes a window other than its own lock window, asks for more permissions or touches the network. Window behaviour is covered by `npm run test:windows` (18 cases across normal, maximized, half-screen, full screen, minimized, several windows, tabs and windows opened or closed while locked), `npm run test:profiles` (Latch never touches another profile) and `npm run test:autolock`. Aegis, the painted scene, the engraved poster and the combination lock are drawn in code (`ui/aegis.js`, `ui/scene.js`, `ui/poster.js`, `ui/lockdial.js`).
+The safety test fails the build if any code closes, reloads, discards or navigates a tab, closes a window other than its own lock window, asks for more permissions or touches the network. Window behaviour is covered by `npm run test:windows` (about 25 scenarios across normal, maximized, half-screen, full screen, minimized, several windows, tabs and windows opened or closed while locked, and the in-page overlay), `npm run test:native` (the Mac helper), `npm run test:profiles` (Latch never touches another profile) and `npm run test:autolock`. Kerby, Aegis, the painted scene and the combination lock are drawn in code (`ui/kerby.js`, `ui/aegis.js`, `ui/scene.js`, `ui/lockdial.js`).
 
 </details>
 

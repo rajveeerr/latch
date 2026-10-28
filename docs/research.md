@@ -16,7 +16,7 @@ their own products, so treat their claims and rankings as self-reported.
 
 I could not reach Reddit with the research tools used here, so no Reddit threads are cited.
 
-What this changed in Latch: **three permissions and no network** (the distrust of extensions), **a tiny download and a 5 KB page script** (clutter and resource use), **never closing tabs** (the maker's own lost tabs), a **recovery code** (lockouts), and a Safari-style **private windows only** mode (the request people keep making).
+What this changed in Latch: **few permissions and no network** (three at the time; it is six now, one of them only for the optional Mac helper) (the distrust of extensions), **a tiny download and a 5 KB page script** (clutter and resource use), **never closing tabs** (the maker's own lost tabs), a **recovery code** (lockouts), and a Safari-style **private windows only** mode (the request people keep making).
 
 ## What exists
 
