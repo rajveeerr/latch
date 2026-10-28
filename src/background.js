@@ -121,7 +121,7 @@ async function enforceLocked({ fast = false } = {}) {
       // over the screen, and only then are windows taken out of the way (the slow, animated part).
       await ensureCovers(settings);
       if (settings.scope === 'profile') await ensureLockWindow(settings);
-      if (settings.hideMode === 'close' && (await isMac())) await strictHide(settings);
+      if (settings.hideMode === 'close' && (await isMac()) && !(await isBrave())) await strictHide(settings);
       if (settings.minimizeWindows) await minimizeWindows(settings);
       if (settings.muteTabs) await muteAudibleTabs(settings);
     }
@@ -141,7 +141,9 @@ async function minimizeWindows(settings) {
   const windows = await chrome.windows.getAll({ windowTypes: ['normal', 'app'] });
   for (const win of windows) {
     if (win.id === state.lockWindowId || !covers(settings, win)) continue;
-    if (!(win.id in windowStates)) windowStates[win.id] = win.state;      // what to put back on unlock
+    // What to put back on unlock. The browser's reported state cannot be trusted to say "minimized" (Brave on macOS reports
+    // "normal" for a window that really is minimized), so every window we ask to minimize is always asked to come back.
+    if (!(win.id in windowStates)) windowStates[win.id] = { state: win.state, left: win.left, top: win.top, width: win.width, height: win.height };
     if (win.state === 'minimized') continue;
     try {
       // A full-screen window is its own macOS Space and cannot be minimized directly: step out of full screen first.
@@ -153,13 +155,21 @@ async function minimizeWindows(settings) {
   await patchState({ windowStates });
 }
 
-// ---------- strict hiding (opt-in, macOS only) ----------
-// Windows are closed while locked, so nothing shows in Stage Manager, Mission Control or the Dock, and reopened from the
-// browser's own recently-closed list on unlock. This is the one place Latch closes a user window, so it is fenced:
+// ---------- complete hiding (macOS) ----------
+// The windows of this profile are closed while locked, so nothing shows in Stage Manager, Mission Control or the Dock,
+// and rebuilt from a saved record on unlock: same windows, sizes, tab order, pinned tabs, groups (name, colour, collapsed),
+// active tab and scroll position. This is how other browser lockers work, so it is fenced and made safer than they are:
 //   * only when the lock window is already up (so the browser never ends up with no window at all)
-//   * never a window with unsaved typing or a tab playing sound: those are minimized instead
-//   * what was closed is saved to storage, so it survives the browser quitting, and unlock reports anything it cannot reopen
+//   * never a window with unsaved typing, a playing tab, or a page that cannot be reopened (brave:// pages, extension pages)
+//   * the record is saved to persistent storage BEFORE anything is closed, so quitting the browser while locked loses nothing
+//   * tabs are closed one by one, which is also what makes it work in Brave (it asks before closing a multi-tab window)
+//   * every window is checked afterwards, and one that did not close is simply minimized instead
 const isMac = async () => (await chrome.runtime.getPlatformInfo()).os === 'mac';
+// Closing windows from an extension crashes Brave on macOS (a null-pointer fault in its window-close handler, reproduced
+// by test/e2e/stress.mjs). The settings page records whether this is Brave, and complete hiding refuses to run there.
+const isBrave = async () => (await store.get('browser'))?.brave === true;
+const REOPENABLE = /^(https?|file|ftp):/;
+const BLANK = /^(about:blank|chrome:\/\/newtab\/?|brave:\/\/newtab\/?|chrome-search:\/\/local-ntp\/.*|edge:\/\/newtab\/?)$/;
 
 // True when a page holds typing that has not been saved anywhere: a changed field, or text in an editable region.
 function pageHasUnsavedTyping() {
@@ -170,95 +180,114 @@ function pageHasUnsavedTyping() {
 }
 
 async function windowIsRisky(win) {
-  if (win.tabs.some((tab) => tab.audible)) return true;
-  const checks = await Promise.allSettled(win.tabs.filter((tab) => !tab.discarded).map((tab) =>
+  if (win.tabs.some((tab) => tab.audible)) return true;                       // playing media would be lost
+  const unreopenable = win.tabs.some((tab) => { const url = tab.url || tab.pendingUrl || ''; return !REOPENABLE.test(url) && !BLANK.test(url); });
+  if (unreopenable) return true;                                              // an internal or extension page cannot be recreated
+  const checks = await Promise.allSettled(win.tabs.filter((tab) => !tab.discarded && REOPENABLE.test(tab.url || '')).map((tab) =>
     chrome.scripting.executeScript({ target: { tabId: tab.id, allFrames: true }, func: pageHasUnsavedTyping })));
   return checks.some((result) => result.status === 'fulfilled' && result.value.some((frame) => frame.result === true));
+}
+
+// Everything needed to rebuild a window as it was.
+async function captureWindow(win, focusedBefore) {
+  const groups = Object.fromEntries((await chrome.tabGroups.query({ windowId: win.id }).catch(() => [])).map((g) => [g.id, { title: g.title, color: g.color, collapsed: g.collapsed }]));
+  const scrolls = await Promise.allSettled(win.tabs.map((tab) => REOPENABLE.test(tab.url || '') && !tab.discarded
+    ? chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => ({ x: scrollX, y: scrollY }) }) : Promise.reject(new Error('skip'))));
+  return {
+    state: win.state, focused: win.id === focusedBefore,
+    bounds: { left: win.left, top: win.top, width: win.width, height: win.height },
+    groups,
+    tabs: win.tabs.map((tab, i) => ({
+      url: BLANK.test(tab.url || tab.pendingUrl || '') ? '' : (tab.url || tab.pendingUrl || ''),
+      pinned: tab.pinned, active: tab.active, groupId: tab.groupId,
+      scroll: scrolls[i].status === 'fulfilled' ? scrolls[i].value?.[0]?.result ?? null : null,
+    })),
+  };
 }
 
 async function strictHide(settings) {
   const state = await getState();
   if (state.lockWindowId == null) return;                                   // the lock window must exist first
-  const closed = (await store.get('strictRestore')) || [];
+  const record = (await store.get('strictRestore')) || [];
   const wins = await chrome.windows.getAll({ windowTypes: ['normal', 'app'], populate: true });
-  let closedNow = 0;
   const attempts = [];
-  // Phase 1, fast: save each window's addresses, then close it. Nothing waits on the browser here, so nothing stays on show.
+  // Phase 1, fast: save each window's record, then close its tabs one by one.
   for (const win of wins) {
     if (win.id === state.lockWindowId || !covers(settings, win) || !win.tabs?.length) continue;
     if (await windowIsRisky(win)) {                                          // minimized by the normal path
-      if (!(state.keptOpen || []).includes(win.id)) { await patchState({ keptOpen: [...(state.keptOpen || []), win.id] }); await logEvent(store, 'setting', 'kept a window open: unsaved typing or sound'); }
+      if (!(state.keptOpen || []).includes(win.id)) { await patchState({ keptOpen: [...(state.keptOpen || []), win.id] }); await logEvent(store, 'setting', 'kept a window open: unsaved typing, sound, or a page that cannot be reopened'); }
       continue;
     }
-    const tabs = win.tabs.map((tab) => ({ url: tab.url || tab.pendingUrl || '', pinned: tab.pinned, active: tab.active }));
-    const item = { sessionId: null, tabs, state: win.state, focused: win.id === state.focusedBefore };
-    closed.push(item);
-    await store.set('strictRestore', closed);                               // saved BEFORE closing, so a crash cannot lose the list
-    try { await chrome.windows.remove(win.id); attempts.push({ id: win.id, item }); }   // strict hiding: the only other place a user window is closed
-    catch (err) { closed.splice(closed.indexOf(item), 1); await store.set('strictRestore', closed); await logEvent(store, 'setting', `strict: could not close a window (${String(err?.message || err).slice(0, 80)})`); }
+    const item = await captureWindow(win, state.focusedBefore);
+    record.push(item);
+    await store.set('strictRestore', record);                               // saved BEFORE closing, so nothing can be lost
+    try { await chrome.tabs.remove(win.tabs.map((tab) => tab.id)); attempts.push({ id: win.id, item }); }   // complete hiding: the only place user tabs are closed
+    catch (err) { record.splice(record.indexOf(item), 1); await store.set('strictRestore', record); await logEvent(store, 'setting', `could not close a window (${String(err?.message || err).slice(0, 80)})`); }
   }
-  // Some browsers (Brave, when it is set to ask first) answer "closed" but keep a window with several tabs open. Check each one,
-  // and forget the ones that stayed: they are minimized by the normal path, and must never be "restored" as duplicates.
+  // Verify each window really closed. One that stayed open is forgotten (never "restored" as a duplicate) and minimized instead.
   if (attempts.length) {
-    await new Promise((resolve) => setTimeout(resolve, 700));
+    await new Promise((resolve) => setTimeout(resolve, 500));
     for (const { id, item } of attempts) {
       let stillOpen = true;
       try { await chrome.windows.get(id); } catch { stillOpen = false; }
-      if (stillOpen) { closed.splice(closed.indexOf(item), 1); await logEvent(store, 'setting', 'strict: this browser kept a window open (it asks before closing windows with several tabs)'); }
-      else closedNow++;
+      if (stillOpen) { record.splice(record.indexOf(item), 1); await logEvent(store, 'setting', 'a window did not close, so it was minimized instead'); }
     }
-    await store.set('strictRestore', closed);
-  }
-  if (!closedNow) return;
-  // Phase 2: the browser adds closed windows to its recently-closed list a moment later (some take a second or two).
-  // Match each saved window to its entry by its addresses. A window without a match is rebuilt from its addresses on unlock.
-  const urlsOf = (tabs) => tabs.map((tab) => tab.url).filter(Boolean).sort().join('\n');
-  for (let attempt = 0; attempt < 14 && closed.some((item) => !item.sessionId); attempt++) {
-    await new Promise((resolve) => setTimeout(resolve, attempt ? 150 : 60));
-    const claimed = new Set(closed.map((item) => item.sessionId).filter(Boolean));
-    const recent = (await chrome.sessions.getRecentlyClosed({ maxResults: 25 })).filter((item) => item.window && !claimed.has(item.window.sessionId));
-    for (const item of closed.filter((entry) => !entry.sessionId)) {
-      const match = recent.find((candidate) => !claimed.has(candidate.window.sessionId) && urlsOf((candidate.window.tabs || []).map((tab) => ({ url: tab.url }))) === urlsOf(item.tabs));
-      if (match) { item.sessionId = match.window.sessionId; claimed.add(item.sessionId); }
-    }
-    await store.set('strictRestore', closed);
+    await store.set('strictRestore', record);
   }
 }
 
-// Reopen what strict hiding closed: from the browser's own list when it has the window, otherwise rebuilt from the
-// saved addresses. Anything that cannot be reopened either way is reported with the manual way back.
+// Scroll positions are put back once each rebuilt page has loaded.
+async function applyPendingScroll(tabId) {
+  const pending = (await store.get('pendingScroll')) || {};
+  const scroll = pending[tabId];
+  if (!scroll) return;
+  delete pending[tabId];
+  await store.set('pendingScroll', pending);
+  chrome.scripting.executeScript({ target: { tabId }, func: (x, y) => scrollTo(x, y), args: [scroll.x || 0, scroll.y || 0] }).catch(() => {});
+}
+
+// Rebuild what complete hiding closed. Anything that cannot be rebuilt is reported.
 async function strictRestore() {
-  const closed = (await store.get('strictRestore')) || [];
-  if (!closed.length) return;
-  let failed = 0, rebuilt = 0, focusId = null;
-  for (const item of closed) {
-    let win = null;
-    if (item.sessionId) {
-      try { win = (await chrome.sessions.restore(item.sessionId)).window; } catch { /* fall through to the saved addresses */ }
-    }
-    if (!win) {
-      const urls = (item.tabs || []).map((tab) => tab.url).filter((url) => /^(https?|file|ftp):/.test(url));
-      if (!urls.length) { failed++; continue; }
-      try {
-        win = await chrome.windows.create({ url: urls, focused: false });
-        rebuilt++;
-        const created = await chrome.tabs.query({ windowId: win.id });
-        for (const tab of created) {
-          const wasPinned = (item.tabs || []).find((saved) => saved.url === (tab.url || tab.pendingUrl))?.pinned;
-          if (wasPinned) await chrome.tabs.update(tab.id, { pinned: true });
+  const record = (await store.get('strictRestore')) || [];
+  if (!record.length) return;
+  let failed = 0, focusId = null;
+  const pending = (await store.get('pendingScroll')) || {};
+  for (const item of record) {
+    const urls = item.tabs.map((tab) => tab.url).filter((url) => REOPENABLE.test(url));
+    try {
+      const b = item.bounds || {};
+      const win = await chrome.windows.create({ url: urls.length ? urls : undefined, focused: false, state: 'normal',
+        ...(Number.isFinite(b.left) ? { left: b.left, top: b.top, width: b.width, height: b.height } : {}) });
+      const created = (await chrome.tabs.query({ windowId: win.id })).sort((x, y) => x.index - y.index);
+      const saved = item.tabs.filter((tab) => REOPENABLE.test(tab.url));
+      const groupIds = new Map();
+      for (let i = 0; i < created.length && i < saved.length; i++) {
+        const tab = created[i], was = saved[i];
+        if (was.pinned) await chrome.tabs.update(tab.id, { pinned: true }).catch(() => {});
+        if (was.scroll && (was.scroll.x || was.scroll.y)) pending[tab.id] = was.scroll;
+        if (was.groupId != null && was.groupId !== -1) {
+          if (!groupIds.has(was.groupId)) groupIds.set(was.groupId, []);
+          groupIds.get(was.groupId).push(tab.id);
         }
-      } catch { failed++; continue; }
-    }
-    if (win && item.state === 'fullscreen') { try { await chrome.windows.update(win.id, { focused: true }); await chrome.windows.update(win.id, { state: 'fullscreen' }); } catch { /* it comes back in its own state */ } }
-    if (win && item.state === 'maximized') { try { await chrome.windows.update(win.id, { state: 'maximized' }); } catch { /* ignore */ } }
-    if (win && item.focused) focusId = win.id;
+      }
+      for (const [savedGroup, tabIds] of groupIds) {
+        const info = item.groups?.[savedGroup];
+        const groupId = await chrome.tabs.group({ tabIds, createProperties: { windowId: win.id } }).catch(() => null);
+        if (groupId != null && info) await chrome.tabGroups.update(groupId, { title: info.title, color: info.color, collapsed: info.collapsed }).catch(() => {});
+      }
+      const activeIndex = saved.findIndex((tab) => tab.active);
+      if (activeIndex >= 0 && created[activeIndex]) await chrome.tabs.update(created[activeIndex].id, { active: true }).catch(() => {});
+      if (item.state === 'maximized') await chrome.windows.update(win.id, { state: 'maximized' }).catch(() => {});
+      if (item.state === 'fullscreen') { try { await chrome.windows.update(win.id, { focused: true }); await chrome.windows.update(win.id, { state: 'fullscreen' }); } catch { /* it returns in its own state */ } }
+      if (item.focused) focusId = win.id;
+    } catch { failed++; }
   }
+  await store.set('pendingScroll', pending);
   await store.set('strictRestore', []);
   if (focusId != null) { try { await chrome.windows.update(focusId, { focused: true }); } catch { /* gone */ } }
-  if (rebuilt) await logEvent(store, 'setting', `${rebuilt} window(s) rebuilt from their addresses (this browser did not keep them in its recently-closed list)`);
   if (failed) {
-    await patchState({ error: `${failed} window${failed > 1 ? 's' : ''} could not be reopened automatically. Press Command+Shift+T to reopen closed windows.` });
-    await logEvent(store, 'setting', `${failed} window(s) could not be reopened: use Command+Shift+T`);
+    await patchState({ error: `${failed} window${failed > 1 ? 's' : ''} could not be rebuilt. Your pages are in your browser history.` });
+    await logEvent(store, 'setting', `${failed} window(s) could not be rebuilt`);
   }
 }
 
@@ -324,24 +353,27 @@ function unlockNow({ error = '', method = 'passcode' } = {}) {
     // 1. Close our own window first, so nothing of ours is in the way.
     await closeLockWindow(state.lockWindowId);
     await strictRestore();                                           // windows closed by strict hiding reopen first
-    // 2. Bring back what we hid, leaving a window alone if it is already as it should be (re-applying a state can
-    //    nudge its bounds). Full-screen windows go last, because entering full screen is the slow, animated step.
-    const entries = Object.entries(state.windowStates).map(([id, previous]) => [Number(id), previous]);
-    entries.sort((a, b) => Number(a[1] === 'fullscreen') - Number(b[1] === 'fullscreen'));
+    // 2. Bring back what we hid. Every window we asked to minimize is asked to come back, because the browser may report
+    //    "normal" for one that really is minimized. Full-screen windows go last: entering full screen is the animated step.
+    const entries = Object.entries(state.windowStates).map(([id, saved]) => [Number(id), typeof saved === 'string' ? { state: saved } : saved]);
+    entries.sort((a, b) => Number(a[1].state === 'fullscreen') - Number(b[1].state === 'fullscreen'));
     let focusId = null;
-    for (const [id, previous] of entries) {
+    for (const [id, saved] of entries) {
       try {
-        const current = await chrome.windows.get(id);
-        if (current.state !== previous) {
-          if (previous === 'fullscreen') {
-            if (current.state === 'minimized') await chrome.windows.update(id, { state: 'normal' });
-            await chrome.windows.update(id, { focused: true });          // it must be the active window to enter full screen
-            await chrome.windows.update(id, { state: 'fullscreen' });
-          } else {
-            await chrome.windows.update(id, { state: previous });
+        if (saved.state === 'minimized') continue;                      // the user had it minimized: leave it that way
+        if (saved.state === 'fullscreen') {
+          await chrome.windows.update(id, { state: 'normal' });          // un-minimize
+          await chrome.windows.update(id, { focused: true });            // it must be the active window to enter full screen
+          await chrome.windows.update(id, { state: 'fullscreen' });
+        } else {
+          await chrome.windows.update(id, { state: saved.state === 'maximized' ? 'maximized' : 'normal' });   // un-minimize, whatever was reported
+          if (saved.state !== 'maximized' && Number.isFinite(saved.left)) {
+            const now = await chrome.windows.get(id);
+            const drifted = [['left', saved.left], ['top', saved.top], ['width', saved.width], ['height', saved.height]].some(([k, v]) => Math.abs((now[k] ?? v) - v) > 3);
+            if (drifted) await chrome.windows.update(id, { left: saved.left, top: saved.top, width: saved.width, height: saved.height });
           }
         }
-        if (previous !== 'minimized') focusId = id;
+        focusId = id;
       } catch { /* window is gone */ }
     }
     // 3. Give focus back to the window you were using.
@@ -417,6 +449,7 @@ chrome.windows.onRemoved.addListener(async (windowId) => {
 });
 
 chrome.tabs.onUpdated.addListener(async (tabId, change) => {
+  if (change.status === 'complete') applyPendingScroll(tabId);
   if (change.status === 'complete' && (await getState()).locked) {
     chrome.scripting.executeScript({ target: { tabId, allFrames: true }, files: ['src/cover.js'] }).catch(() => {});   // a tab that finished loading while locked
   }
@@ -603,18 +636,20 @@ const handlers = {
     return { ok };
   },
 
+  async setBrowser({ brave }) { await store.set('browser', { brave: brave === true }); return { ok: true }; },
+
   // Switching strict hiding on: can this browser really close a window with several tabs without asking?
   async probeStrict() {
     if (!(await isMac())) return { ok: false, reason: 'mac-only' };
-    let probe = null;
+    if (await isBrave()) return { ok: false, reason: 'brave' };
     try {
-      probe = await chrome.windows.create({ url: ['about:blank', 'about:blank'], focused: false, width: 300, height: 200 });
-      await chrome.windows.remove(probe.id);                              // strict-hiding capability check: a throwaway blank window of ours
-      await new Promise((resolve) => setTimeout(resolve, 1200));
+      const probe = await chrome.windows.create({ url: ['about:blank', 'about:blank'], focused: false, width: 300, height: 200 });
+      const tabs = await chrome.tabs.query({ windowId: probe.id });
+      await chrome.tabs.remove(tabs.map((tab) => tab.id));                    // capability check: close a throwaway blank window of ours, tab by tab
+      await new Promise((resolve) => setTimeout(resolve, 900));
       let stillOpen = true;
       try { await chrome.windows.get(probe.id); } catch { stillOpen = false; }
-      if (stillOpen) return { ok: false, reason: 'asks-first', windowId: probe.id };
-      return { ok: true };
+      return stillOpen ? { ok: false, reason: 'asks-first', windowId: probe.id } : { ok: true };
     } catch { return { ok: false, reason: 'error' }; }
   },
 

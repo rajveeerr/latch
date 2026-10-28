@@ -2,7 +2,7 @@
 
 export const DEFAULTS = Object.freeze({
   enabled: true,
-  hideMode: 'minimize',      // 'minimize' = windows go to the Dock (safe); 'close' = strict: windows are closed and reopened on unlock (macOS only)
+  hideMode: 'minimize',      // 'minimize' = windows go to the Dock (safe, the default); 'close' = experimental: windows are closed and rebuilt on unlock (macOS, never in Brave)
   lockWindow: 'fill',        // 'fill' = cover the screen; 'fullscreen' = full screen, which also hides the Dock and menu bar
   scope: 'profile',          // 'profile' = lock everything; 'private' = lock only private windows (like Safari)
   autoLockMinutes: 5,        // lock after this long with no keyboard/mouse input; 0 = never

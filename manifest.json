@@ -24,7 +24,7 @@
     "idle",
     "alarms",
     "scripting",
-    "sessions"
+    "tabGroups"
   ],
   "content_scripts": [
     {

@@ -21,7 +21,11 @@ let toastTimer;
 const isMac = /Mac/.test(navigator.platform);
 for (const el of document.querySelectorAll('.shortcut')) el.textContent = isMac ? '⌃⇧L' : 'Ctrl+Shift+L';
 $('version').textContent = chrome.runtime.getManifest().version;
-navigator.brave?.isBrave?.().then((isBrave) => { if (isBrave) for (const el of document.querySelectorAll('.scheme')) el.textContent = 'brave'; });
+const braveCheck = Promise.resolve(navigator.brave?.isBrave?.()).then((isBrave) => {
+  send({ type: 'setBrowser', brave: Boolean(isBrave) });          // the worker cannot ask the page itself, so it is told here
+  if (isBrave) for (const el of document.querySelectorAll('.scheme')) el.textContent = 'brave';
+  return Boolean(isBrave);
+}).catch(() => false);
 
 // ---------- feedback ----------
 function toast(text, kind = '') {
@@ -208,16 +212,18 @@ for (const radio of document.querySelectorAll('input[name="scope"]')) radio.addE
 $('lockFullscreen').addEventListener('change', () => saveSettings());
 $('hideStrict').addEventListener('change', async () => {
   if (!$('hideStrict').checked) return saveSettings();
+  await braveCheck;
   toast('Checking that this browser can do it safely…');
   const probe = await send({ type: 'probeStrict' });
   if (!probe.ok) {
     $('hideStrict').checked = false;
     toast(probe.reason === 'asks-first'
-      ? 'This browser asks before closing windows with several tabs, so strict hiding cannot work here. Dismiss the prompt if one appeared, or keep minimizing.'
-      : 'Strict hiding is not available in this browser.', 'error');
+      ? 'This browser would not close a window here, so hiding completely cannot work. Latch will minimize instead.'
+      : probe.reason === 'brave' ? 'Not in Brave: closing windows crashes it, which we measured. Latch minimizes windows instead.'
+      : 'Hiding windows completely is only available on macOS. Latch will minimize instead.', 'error');
     return;
   }
-  toast('Strict mode on. Windows with unsaved typing stay open (minimized).');
+  toast('Windows will be hidden completely. Ones with unsaved typing stay open (minimized).');
   saveSettings();
 });
 for (const k of NUMBERS) {

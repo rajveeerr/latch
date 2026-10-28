@@ -10,7 +10,7 @@ const sources = (dir) => readdirSync(path.join(root, dir), { recursive: true }).
 const all = [...sources('src'), ...sources('ui')];
 
 test('no code closes, reloads, discards or navigates tabs', () => {
-  const banned = /chrome\.tabs\.(remove|discard|reload|goBack|goForward|group|ungroup|move)\b|chrome\.bookmarks|chrome\.tabGroups|chrome\.history|chrome\.browsingData|location\.(href|assign|replace)\s*=|window\.close\(\)/;
+  const banned = /chrome\.tabs\.(discard|reload|goBack|goForward|ungroup|move)\b|chrome\.bookmarks|chrome\.history|chrome\.browsingData|location\.(href|assign|replace)\s*=|window\.close\(\)/;
   for (const [file, code] of all) {
     if (file.endsWith('popup.js')) continue;   // the popup may close itself
     assert.ok(!banned.test(code), `${file} uses a forbidden call`);
@@ -31,31 +31,31 @@ test('the only tabs Latch opens are its own settings page and the browser pages 
   }
 });
 
-test('the sessions API is only used to list and restore recently closed windows', () => {
-  for (const [file, code] of all) {
-    for (const match of code.matchAll(/chrome\.sessions\.(\w+)/g)) {
-      assert.ok(['getRecentlyClosed', 'restore'].includes(match[1]), `${file} uses chrome.sessions.${match[1]}`);
-    }
-  }
-});
-
-test('windows.remove: our own lock window, and the fenced strict-hiding path, and nowhere else', () => {
+test('user tabs are only ever closed by complete hiding, behind its fences', () => {
   const background = read('src/background.js');
-  assert.equal([...background.matchAll(/chrome\.windows\.remove\(/g)].length, 3, 'exactly three call sites: the lock window, strict hiding, and the capability probe');
+  assert.ok(!/chrome\.sessions/.test(background), 'no sessions API');
+  const calls = [...background.matchAll(/chrome\.tabs\.remove\(/g)].length;
+  assert.equal(calls, 2, 'exactly two call sites: complete hiding, and the capability probe on its own blank window');
+  const hide = background.slice(background.indexOf('async function strictHide'), background.indexOf('// Scroll positions are put back'));
+  assert.match(hide, /state\.lockWindowId == null\) return/, 'it waits for the lock window');
+  assert.match(hide, /windowIsRisky\(win\)/, 'it skips windows with unsaved typing, sound or pages that cannot be reopened');
+  assert.ok(hide.indexOf("store.set('strictRestore'") < hide.indexOf('chrome.tabs.remove('), 'the record is saved BEFORE anything is closed');
+  assert.match(hide, /stillOpen/, 'and each window is verified afterwards');
+  assert.match(background, /await isMac\(\)\) && !\(await isBrave\(\)\)\) await strictHide/, 'and it only runs on macOS, and never in Brave (where closing windows was measured to crash the browser)');
   const probe = background.slice(background.indexOf('async probeStrict'), background.indexOf('// ----- activity and incognito'));
   assert.match(probe, /url: \['about:blank', 'about:blank'\]/, 'the probe only ever closes a blank window it just made');
+  for (const [file, code] of all) if (file !== path.join('src', 'background.js')) assert.ok(!/tabs\.remove|windows\.remove/.test(code), `${file} closes tabs or windows`);
+});
+
+test('windows.remove: only our own lock window', () => {
+  const background = read('src/background.js');
+  assert.equal([...background.matchAll(/chrome\.windows\.remove\(/g)].length, 1, 'one call site');
   assert.match(background, /isOurs = win\.type === 'popup' && win\.tabs\?\.length === 1 && win\.tabs\[0\]\.url\?\.startsWith\(LOCK_PAGE\)/);   // the lock window is verified
-  const strict = background.slice(background.indexOf('async function strictHide'), background.indexOf('// Reopen what strict hiding closed'));
-  assert.match(strict, /state\.lockWindowId == null\) return/, 'strict hiding waits for the lock window');
-  assert.match(strict, /windowIsRisky\(win\)/, 'strict hiding skips windows with unsaved typing or sound');
-  assert.match(strict, /store\.set\('strictRestore'/, 'and saves what it closed');
-  assert.match(background, /await isMac\(\)\)\) await strictHide/, 'and only runs on macOS');
-  for (const [file, code] of all) if (file !== path.join('src', 'background.js')) assert.ok(!/windows\.remove/.test(code), `${file} closes windows`);
 });
 
 test('only the permissions Latch needs are requested', () => {
   const manifest = JSON.parse(read('manifest.json'));
-  assert.deepEqual([...manifest.permissions].sort(), ['alarms', 'idle', 'scripting', 'sessions', 'storage']);
+  assert.deepEqual([...manifest.permissions].sort(), ['alarms', 'idle', 'scripting', 'storage', 'tabGroups']);
   assert.deepEqual(manifest.host_permissions, ['<all_urls>']);          // needed to put the cover into tabs that were already open
 });
 
