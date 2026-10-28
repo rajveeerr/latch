@@ -384,6 +384,7 @@ function unlockNow({ error = '', method = 'passcode' } = {}) {
           await chrome.windows.update(id, { state: 'normal' });          // un-minimize
           await chrome.windows.update(id, { focused: true });            // it must be the active window to enter full screen
           await chrome.windows.update(id, { state: 'fullscreen' });
+          await settleFullscreen(id);                                    // let the full-screen animation finish before anything else takes focus
         } else {
           await chrome.windows.update(id, { state: saved.state === 'maximized' ? 'maximized' : 'normal' });   // un-minimize, whatever was reported
           if (saved.state !== 'maximized' && Number.isFinite(saved.left)) {
@@ -398,11 +399,27 @@ function unlockNow({ error = '', method = 'passcode' } = {}) {
     // 3. Give focus back to the window you were using.
     for (const candidate of [state.focusedBefore, focusId]) {
       if (candidate == null) continue;
-      try { await chrome.windows.update(candidate, { focused: true }); break; } catch { /* try the next */ }
+      try {
+        await chrome.windows.update(candidate, { focused: true });
+        // A window that has just entered full screen can miss being made the active window while macOS is still switching
+        // Spaces, and then ignores clicks and keys until it is minimized and restored. Check, and ask once more if needed.
+        if (!(await chrome.windows.get(candidate)).focused) { await sleep(300); await chrome.windows.update(candidate, { focused: true }); }
+        break;
+      } catch { /* try the next */ }
     }
     await patchState({ lockWindowId: null, windowStates: {}, mutedTabs: [], failures: 0, focusedBefore: null, keptOpen: [] });
     return { ok: true };
   });
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+// Wait (up to ~4 s) until the window really is full screen, then a moment for the Space switch to finish.
+async function settleFullscreen(id) {
+  for (let i = 0; i < 20; i++) {
+    try { if ((await chrome.windows.get(id)).state === 'fullscreen') break; } catch { return; }
+    await sleep(200);
+  }
+  await sleep(400);
 }
 
 // The only place a window is ever closed. Refuses unless it is our own lock page, alone in its window.

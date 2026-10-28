@@ -220,6 +220,9 @@ try {
     await unlock();
     await until(async () => (await info(w)).state === 'fullscreen', 'back in full screen after unlocking', 20000);
     assert.ok(!(await coverUp(pageFor('fs'))));
+    // Not only full screen again: it must be the active window, or clicks and keys go nowhere until it is minimized and restored.
+    await until(async () => (await W(async (id) => (await chrome.windows.get(id)).focused, w)) === true, 'the full-screen window to be the focused window after unlocking', 8000);
+    await until(async () => pageFor('fs').evaluate(() => document.hasFocus()), 'the page in the full-screen window to have keyboard focus', 8000);
     await closeWin(w);
   });
 
