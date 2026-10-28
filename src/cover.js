@@ -99,24 +99,32 @@
     frame.dataset.ready = '1';
     try { frame.focus(); } catch { /* ignore */ }
   });
-  document.addEventListener('visibilitychange', syncFrame);
+  document.addEventListener('visibilitychange', () => { if (applies() && visible()) mount(); syncFrame(); });
 
   function unmount() {
     if (frame) { frame.remove(); frame = null; }
-    if (host) { host.remove(); host = null; root = null; }
+    if (host) {
+      host.remove(); host = null; root = null;
+      // The unlock screen had the keyboard focus. With it gone, hand focus back to the page itself, or a full-screen window
+      // can sit there ignoring keys and clicks until it is left and entered again.
+      try { window.focus(); (document.body || document.documentElement).focus({ preventScroll: true }); } catch { /* ignore */ }
+    }
   }
 
+  // Only the tab you can see is covered, which is what locking "the window" means; a tab in the background is covered the moment
+  // it becomes visible. Media is paused everywhere, so nothing keeps playing behind the lock.
+  const visible = () => document.visibilityState === 'visible';
   function apply() {
     if (applies()) {
-      mount();
       if (settings.pauseMedia) pauseMedia();
+      if (visible()) mount();
     } else {
       unmount();
     }
   }
 
   // Keep the cover in place if the page removes it, and cover a document that is still loading.
-  new MutationObserver(() => { if (applies() && (!host || !host.isConnected)) apply(); })
+  new MutationObserver(() => { if (applies() && visible() && (!host || !host.isConnected)) apply(); })
     .observe(document, { childList: true, subtree: true });
 
   // Anything that starts playing while locked (autoplay, next video) is stopped.

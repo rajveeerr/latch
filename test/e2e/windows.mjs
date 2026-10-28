@@ -283,11 +283,14 @@ try {
     for (const x of wins) await closeWin(x.wid);
   });
 
-  await scenario('a window with several tabs: every tab is covered, not only the visible one', async () => {
+  await scenario('a window with several tabs: the visible tab is covered, and so is every tab you switch to', async () => {
     const w = await create({ url: [site('tabs-1'), site('tabs-2'), site('tabs-3')], state: 'normal', left: 100, top: 100, width: 800, height: 600 });
     await until(() => pageFor('tabs-1') && pageFor('tabs-2') && pageFor('tabs-3'), 'pages'); await sleep(700);
     await lock();
-    for (const n of ['tabs-1', 'tabs-2', 'tabs-3']) assert.ok(await coverUp(pageFor(n)), `${n} covered`);
+    for (const n of ['tabs-1', 'tabs-2', 'tabs-3']) {
+      const tabId = await W(async (i, name) => { const t = (await chrome.tabs.query({ windowId: i })).find((x) => (x.url || '').includes(`t=${name}`)); await chrome.tabs.update(t.id, { active: true }); return t.id; }, w, n);
+      await until(async () => coverUp(pageFor(n)), `${n} covered after switching to it`, 4000);
+    }
     await unlock();
     for (const n of ['tabs-1', 'tabs-2', 'tabs-3']) assert.ok(!(await coverUp(pageFor(n))), `${n} uncovered`);
     await closeWin(w);
@@ -442,6 +445,7 @@ try {
     await setStyle('overlay');
     const w = await create({ url: site('ov2'), state: 'fullscreen' });
     await until(async () => (await info(w))?.state === 'fullscreen', 'fullscreen', 20000); await until(() => pageFor('ov2'), 'page'); await sleep(600);
+    await focus(w); await sleep(400);                                // like a person locking from the window they are in
     await lockHere();
     await until(async () => coverUp(pageFor('ov2')), 'covered');
     await until(() => unlockFrame(pageFor('ov2')), 'the unlock screen', 8000);
@@ -450,6 +454,8 @@ try {
     await typeInto(unlockFrame(pageFor('ov2')), PASS);
     await until(async () => !(await lockedFlag()), 'unlocked');
     assert.equal((await info(w)).state, 'fullscreen', 'and it is still in full screen');
+    if (process.env.BRAVE) await until(async () => (await W(async (id) => (await chrome.windows.get(id)).focused, w)) === true, 'the full-screen window to be the focused window', 6000);   // (the test Chromium is not the active app, so it cannot report this)
+    await until(async () => pageFor('ov2').evaluate(() => document.hasFocus()), 'the page in the full-screen window to have keyboard focus again (usable without leaving full screen)', 6000);
     await closeWin(w);
   });
 

@@ -375,7 +375,8 @@ async function ensureUnlockWindow() {
 // every tab after a reload or an update, are given the cover here, then the visible tab of each window is checked.
 async function ensureCovers(settings) {
   if (!settings.coverPages) return;
-  const tabs = (await chrome.tabs.query({})).filter((tab) => covers(settings, tab) && !tab.discarded);
+  // Only the visible tab of each window; any other tab gets it when it is switched to (see onActivated below).
+  const tabs = (await chrome.tabs.query({ active: true })).filter((tab) => covers(settings, tab) && !tab.discarded);
   await Promise.allSettled(tabs.map((tab) => chrome.scripting.executeScript({ target: { tabId: tab.id, allFrames: true }, files: ['src/cover.js'] })));
 }
 
@@ -554,7 +555,13 @@ chrome.windows.onRemoved.addListener(async (windowId) => {
 
 // The overlay style only needs a look whenever the visible tab of some window may have changed.
 const lockedOverlay = async () => (await getState()).locked && overlayStyle(await getSettings());
-chrome.tabs.onActivated.addListener(async () => { if (await lockedOverlay()) enforceSoon(); });
+chrome.tabs.onActivated.addListener(async ({ tabId }) => {
+  const [state, settings] = await Promise.all([getState(), getSettings()]);
+  if (!state.locked) return;
+  // A tab switched to while locked gets the cover script at once (a tab open before Latch loaded has none yet).
+  if (settings.coverPages) chrome.scripting.executeScript({ target: { tabId, allFrames: true }, files: ['src/cover.js'] }).catch(() => {});
+  if (overlayStyle(settings)) enforceSoon();
+});
 
 chrome.tabs.onUpdated.addListener(async (tabId, change) => {
   if ((change.url || change.status === 'loading') && (await lockedOverlay())) enforceSoon();
