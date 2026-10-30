@@ -5,7 +5,7 @@
 <h1 align="center">Latch</h1>
 
 <p align="center">
-  <b>Lock Brave like Safari locks private windows.</b><br>
+  <b>Lock your Chromium browser (Brave, Chrome, Edge) like Safari locks private windows.</b><br>
   A tiny passcode and Touch ID lock that covers your browser when you step away,<br>and never closes or changes a tab on its own.
 </p>
 
@@ -30,7 +30,7 @@
 
 ## Why I built this
 
-I always wanted a **native lock in Brave**, like the one Safari has for private windows. It never shipped.
+I always wanted a **native lock in my browser**, like the one Safari has for private windows. Brave, which I use, never shipped one.
 
 So I used a lock extension. It crashed my browser at random and **lost my saved and grouped tabs** more than once. That was the last straw. I built the lock I wanted: fast like a native feature, light, secure, with the good features, and it **never closes or touches a tab**.
 
@@ -38,7 +38,7 @@ I was not alone. Brave's own tracker lists [password protection for tabs and pro
 
 ## Who it is for
 
-- You leave Brave open at home, at work or at school, and someone else could walk up to it.
+- You leave your browser open at home, at work or at school, and someone else could walk up to it.
 - You share a computer with family or roommates and want your logins, history and tabs to stay yours.
 - You have lost tabs to a lock extension before and never want to again.
 
@@ -59,12 +59,26 @@ I was not alone. Brave's own tracker lists [password protection for tabs and pro
   <img src="docs/screenshots/popup-light.png" alt="The toolbar popup" width="170">
 </p>
 
+## Browsers and systems
+
+Latch is a standard Manifest V3 extension, so it runs in Chromium-based browsers. What has actually been tried:
+
+| Browser | The extension | The Mac helper | Tested |
+|---|---|---|---|
+| Brave | yes | yes | Brave 156 on macOS, with the automated tests |
+| Chromium | yes | yes | A Chromium test build on macOS, with the automated tests |
+| Google Chrome | should work, same code | the installer registers it | not tested |
+| Microsoft Edge | should work, same code | the installer registers it | not tested |
+| Vivaldi, Opera, Arc | probably | not registered by the installer | not tried |
+
+The extension has only been tested on macOS. The helper is macOS only; on Windows and Linux Latch locks on the page or with a separate lock window. If you try another browser or system, an issue saying what happened helps a lot.
+
 ## Install in a minute
 
 Latch is not in a web store yet, so you load it as an unpacked extension.
 
 1. [Download the latest zip](https://github.com/rajveeerr/latch/releases/latest) and unzip it somewhere permanent. The browser reads it from that folder, so do not delete it.
-2. Open `brave://extensions` and switch on **Developer mode**.
+2. Open your browser's extensions page (`brave://extensions`, `chrome://extensions` or `edge://extensions`) and switch on **Developer mode**.
 3. Click **Load unpacked** and choose the unzipped folder (the one with `manifest.json` in it).
 4. Aegis says hello. Pick a passcode and **save your recovery code**. Optionally, switch on **Allow in private** in the extension's details so private windows are covered too.
 
@@ -114,7 +128,7 @@ Other lockers are worth knowing about: [Locksy](https://www.locksy.dev/) (per-ta
 <details>
 <summary><b>How windows are hidden, and strict mode</b></summary>
 
-**Three ways to lock, chosen in settings.** *Native Mac helper* (the default when installed): the helper covers each window, tab strip included, and nothing in the browser moves. *On the page*: every visible tab gets an opaque cover with the unlock screen in it, so you type the passcode right where your window is; nothing opens, moves or minimizes, but a page cannot cover the tab strip. The unlock screen is a frame of one of Latch's own pages, so a website cannot read what you type; it is only loaded in the tab you are looking at. *Separate lock window*: a window covers the screen and this profile's windows are minimized. With the page cover, a window whose visible tab cannot hold a cover (the new tab page, `brave://` settings, the web store) is minimized instead, and if no window can hold the cover Latch opens a small unlock window, so there is always a way back in. Touch ID in these two styles opens that small window, because it is tied to Latch's own address; the helper uses macOS's own Touch ID instead.
+**Three ways to lock, chosen in settings.** *Native Mac helper* (the default when installed): the helper covers each window, tab strip included, and nothing in the browser moves. *On the page*: every visible tab gets an opaque cover with the unlock screen in it, so you type the passcode right where your window is; nothing opens, moves or minimizes, but a page cannot cover the tab strip. The unlock screen is a frame of one of Latch's own pages, so a website cannot read what you type; it is only loaded in the tab you are looking at. *Separate lock window*: a window covers the screen and this profile's windows are minimized. With the page cover, a window whose visible tab cannot hold a cover (the new tab page, the browser's own settings pages such as `brave://` or `chrome://`, the web store) is minimized instead, and if no window can hold the cover Latch opens a small unlock window, so there is always a way back in. Touch ID in these two styles opens that small window, because it is tied to Latch's own address; the helper uses macOS's own Touch ID instead.
 
 The **tab strip and address bar stay visible** under the page cover, which a page cannot draw over (the helper does not have this limit). If you have no helper and that matters more to you than staying put, choose **Separate lock window** in settings: a lock window rises over the screen and this profile's windows are minimized (a full-screen window steps out of full screen first). On unlock the lock window closes first, normal windows return, full-screen windows re-enter full screen last, and focus goes back to the window you were using. Latch only ever sees and touches the profile it is installed in.
 
@@ -132,9 +146,9 @@ Latch is a **privacy lock for a browser you leave on a desk**, not a security bo
 - **The page cover can be removed with DevTools.** In *On the page* style, in *Private windows only* mode, and in the helper style when the helper is not installed, the lock is a cover drawn in the page. The helper's lock is a separate program's window and DevTools cannot touch it.
 - **The helper covers windows by their position and size, not by profile.** A browser tells a program which windows exist but not which profile each belongs to, so with two profiles open at exactly the same place and size, a lock can also cover the other profile's window. Picture-in-Picture and other floating windows are not covered, and Stage Manager's and Mission Control's thumbnails are drawn by macOS from the real windows (the helper does cover Stage Manager's side-strip tiles).
 - **The helper is not signed by Apple.** Built here it runs without a prompt. A copy that arrives in a download can be blocked on first open: right-click and choose Open once. A signed and notarized build would remove that, and is not done yet.
-- Anyone who can reach `brave://extensions` can remove Latch. Use your computer's own lock and a sign-in password too.
+- Anyone who can reach your browser's extensions page can remove Latch. Use your computer's own lock and a sign-in password too.
 - The passcode hash lives in the profile folder. Use a long passphrase, not four digits.
-- **Touch ID is beta.** The browser's own Touch ID (WebAuthn) is tested with a virtual authenticator, not yet on real hardware in Brave. The helper's Touch ID uses macOS's own sheet; the tests simulate the fingerprint being accepted, and a real finger has not been tried by anyone but you.
+- **Touch ID is beta.** The browser's own Touch ID (WebAuthn) is tested with a virtual authenticator, not yet on real hardware. The helper's Touch ID uses macOS's own sheet; the tests simulate the fingerprint being accepted, and a real finger has not been tried by anyone but you.
 
 </details>
 

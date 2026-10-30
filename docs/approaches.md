@@ -26,8 +26,8 @@ full-screen windows re-enter full screen last, and focus returns to the window y
 
 ## What an extension cannot do
 
-- Cover a page the browser protects (`brave://` pages, the web store, PDF viewer). Those rely on the lock window and minimizing.
-- Stop someone who can open `brave://extensions` from removing Latch. It is a privacy lock, not a vault.
+- Cover a page the browser protects (its own settings pages such as `brave://` or `chrome://`, the web store, PDF viewer). Those rely on the lock window and minimizing.
+- Stop someone who can open the browser's extensions page from removing Latch. It is a privacy lock, not a vault.
 - Show anything over another macOS Space: swiping to a different Space while locked is not something it can block.
 
 ## Scope

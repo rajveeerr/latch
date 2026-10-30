@@ -1,7 +1,7 @@
 {
   "name": "latch",
   "version": "0.3.0",
-  "description": "Lock a Brave/Chrome profile behind a passcode without touching your tabs.",
+  "description": "Lock a Chromium browser profile (Brave, Chrome, Edge) behind a passcode without touching your tabs.",
   "private": true,
   "type": "module",
   "scripts": {
