@@ -86,7 +86,7 @@ Latch locks the profile it is installed in. Install it in each profile you want 
 
 ### The Mac helper (recommended on macOS)
 
-A page cannot draw over a browser's tab strip and address bar, and a browser extension cannot minimize or move windows without jumping them around. The helper is a tiny Mac app (about 120 KB, built from `native/helper/main.swift`) that the browser starts only while Latch is locked. It draws an opaque lock exactly over each window of that profile, tab strip and address bar included, over full-screen windows too, with no new browser window and nothing minimized or moved. You type the passcode into the helper, never into a web page; the extension still checks it.
+A page cannot draw over a browser's tab strip and address bar, and a browser extension cannot minimize or move windows without jumping them around. The helper is a tiny Mac app (about 400 KB, built from `native/helper/main.swift`) that the browser starts only while Latch is locked. It draws an opaque lock exactly over each window of that profile, tab strip and address bar included, over full-screen windows too, with no new browser window and nothing minimized or moved. You type the passcode into the helper, never into a web page; the extension still checks it.
 
 **Install: double-click `Install Latch Helper.command` in the Latch folder.** That is the whole job. It is a one-time step that takes a second and needs no developer tools (the helper is prebuilt for Apple Silicon and Intel). It survives browser updates and reloading Latch; only moving the Latch folder needs it again, and Latch's settings say so. Latch's settings notice the install by themselves: open them, pick **Native Mac helper**, and the card changes to *Helper found* with nothing to click or reload. If macOS says it cannot verify the file (it can when the folder came from a download), right-click it and choose **Open** once. Switch on **Unlock with Touch ID on the lock screen** there to get a fingerprint button on the helper's lock (Return on an empty field uses it too); macOS shows its own Touch ID sheet, and the passcode always works as well. `Uninstall Latch Helper.command` removes it (so does `./native/uninstall.sh`).
 
@@ -100,7 +100,7 @@ Measured on a MacBook with Chromium:
 
 | | |
 |---|---|
-| Download | **207 KB** (fonts and art included) |
+| Download | **367 KB** (fonts, art and the Mac helper included; about 90 KB without the helper) |
 | Script on every web page | **5 KB**, which only draws a cover and reads nothing |
 | Lock screen first paint | **~70 ms** (popup ~60 ms, settings ~90 ms) |
 | Permissions | **6**: `storage`, `idle`, `alarms`, `scripting`, `tabGroups`, `nativeMessaging` (why: see below) |
